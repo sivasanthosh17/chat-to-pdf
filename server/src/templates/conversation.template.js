@@ -211,16 +211,23 @@ function renderMessage(message, index, platform) {
 </div>`;
 }
 
+// `text` explains the grade only where the extractor's own note does not
+// (verified notes already say how the check was done).
 const GRADE_INFO = {
-  verified: { cls: 'banner-verified', label: 'Verified', text: 'Every message was compared exactly against an independent copy in the platform data.' },
-  verified_with_warnings: { cls: 'banner-warning', label: 'Verified with warnings', text: 'Messages were verified against the platform data; see the warnings below.' },
-  unverified: { cls: 'banner-unverified', label: 'Unverified', text: 'The platform provides no independent source to confirm that every message was retrieved exactly.' },
+  verified: { cls: 'banner-verified', label: 'Verified', text: '' },
+  verified_with_warnings: { cls: 'banner-warning', label: 'Verified with warnings', text: '' },
+  unverified: {
+    cls: 'banner-unverified',
+    label: 'Unverified',
+    text: 'The text is copied exactly as the share page shows it, but there is no second copy to check it against, so it cannot be confirmed that nothing is missing.'
+  },
   incomplete: { cls: 'banner-incomplete', label: 'Incomplete', text: 'Some messages may be missing from this PDF.' },
   failed: { cls: 'banner-failed', label: 'Verification failed', text: '' }
 };
 
 /**
- * Builds a verification banner HTML based on the VerificationReport.
+ * Builds the first-page "About this PDF" box from the VerificationReport:
+ *   grade · how it was checked · things to note · the user's download choices
  * @param {object} report
  * @returns {string}
  */
@@ -228,13 +235,18 @@ function renderVerificationBanner(report) {
   const info = GRADE_INFO[report.grade] || GRADE_INFO.unverified;
   const list = (items, cls = '') =>
     items.length ? `<ul class="banner-list ${cls}">${items.map((w) => `<li>${escapeHtml(w)}</li>`).join('')}</ul>` : '';
+  const paragraph = [info.text, ...(report.notes || [])].filter(Boolean).join(' ');
+  const warnings = report.warnings || [];
+  const adjustments = report.adjustments || [];
 
   return `<div class="verification-banner ${info.cls}">
   <div class="banner-title">Content verification: <strong>${escapeHtml(info.label)}</strong></div>
-  ${info.text ? `<div class="banner-text">${escapeHtml(info.text)}</div>` : ''}
-  ${list(report.notes || [], 'banner-notes')}
-  ${list(report.warnings || [])}
+  ${paragraph ? `<p class="banner-text">${escapeHtml(paragraph)}</p>` : ''}
+  ${warnings.length ? `<div class="banner-label">Please note:</div>${list(warnings)}` : ''}
   ${list(report.errors || [], 'banner-errors')}
+  ${adjustments.length
+    ? `<div class="banner-section"><span class="banner-label">Your download choice:</span> ${adjustments.map(escapeHtml).join(' ')}</div>`
+    : ''}
 </div>`;
 }
 
@@ -254,11 +266,13 @@ export function buildConversationHtml(conversation, report) {
     hour: '2-digit', minute: '2-digit', timeZone: 'UTC'
   }) + ' UTC';
 
-  const bannerHtml = renderVerificationBanner(report);
+  // The summary box is a download option (off by default); the INCOMPLETE
+  // warning below and in-place "not included" notices always print.
+  const bannerHtml = report.showSummary ? renderVerificationBanner(report) : '';
   const messagesHtml = messages.map((msg, i) => renderMessage(msg, i + 1, platform)).join('\n\n');
 
   const incompleteBanner = conversation.extractionStatus === 'partial' || report.grade === 'incomplete'
-    ? '<div class="incomplete-banner">INCOMPLETE EXTRACTION — this PDF may be missing messages. See the verification details above.</div>'
+    ? `<div class="incomplete-banner">INCOMPLETE — this PDF may be missing messages${report.showSummary ? '. See the details above.' : ' from the original conversation.'}</div>`
     : '';
 
   return `<!DOCTYPE html>
@@ -305,11 +319,13 @@ export function buildConversationHtml(conversation, report) {
   .banner-incomplete { background: #fff3e0; border-left: 4px solid #ef6c00; color: #bf360c; }
   .banner-failed     { background: #fce4ec; border-left: 4px solid #b71c1c; color: #7f0000; }
   .banner-title { font-weight: 600; margin-bottom: 3px; font-size: 9.5pt; }
-  .banner-text { margin-bottom: 3px; }
-  .banner-list { padding-left: 18px; margin-top: 4px; }
+  .banner-text { margin-bottom: 4px; line-height: 1.5; }
+  .banner-label { font-weight: 600; margin-top: 6px; }
+  .banner-list { padding-left: 18px; margin-top: 2px; }
   .banner-list li { margin-bottom: 2px; overflow-wrap: anywhere; }
-  .banner-notes { list-style: circle; opacity: 0.85; }
   .banner-errors li { color: #b71c1c; }
+  .banner-section { margin-top: 8px; padding-top: 7px; border-top: 1px solid rgba(0, 0, 0, 0.12); }
+  .banner-section .banner-label { margin-top: 0; }
 
   .incomplete-banner {
     background: #fff3e0; border: 2px solid #ef6c00; border-radius: 6px; padding: 10px 14px;

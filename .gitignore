@@ -26,3 +26,6 @@ scratch/
 
 # Private project notes (not published)
 Plan.txt
+
+# SQLite database (accounts, sessions, usage counts)
+server/data/

@@ -1,6 +1,16 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { createApp } from '../src/app.js';
+import { openDatabase } from '../src/db/database.js';
+
+/**
+ * App for conversion-pipeline tests: in-memory database, offline URL checks
+ * and the login requirement off (login and roles are covered in auth.test.js).
+ */
+export function testApp(options = {}) {
+  return createApp({ db: openDatabase(':memory:'), requireAuth: false, validatorOptions: { skipDns: true }, ...options });
+}
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
 

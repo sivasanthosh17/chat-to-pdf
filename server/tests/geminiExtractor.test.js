@@ -102,7 +102,7 @@ test('Gemini: a turn without a reply is reported and marked incomplete', () => {
   const result = parseGeminiHtml(html, URL);
   assert.equal(result.messages.length, 3);
   assert.equal(result.extractionStatus, 'partial');
-  assert.ok(result.verification.mismatches.some((m) => m.includes('Turn 2') && m.includes('no reply')));
+  assert.ok(result.verification.mismatches.includes("Gemini's reply in exchange 2 could not be found on the share page."));
   assert.equal(verifyConversation(result).grade, 'incomplete');
 });
 

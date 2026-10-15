@@ -6,10 +6,9 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createApp } from '../src/app.js';
 import { AppError } from '../src/utils/errors.js';
 import { parseChatGptSharePayload } from '../src/extractors/chatgpt.extractor.js';
-import { jsonFixture, withServer, postJson, makeConversation } from './helpers.js';
+import { jsonFixture, withServer, postJson, makeConversation, testApp } from './helpers.js';
 
 const offline = { validatorOptions: { skipDns: true } };
 const CHATGPT_URL = 'https://chatgpt.com/share/fixture-conversation';
@@ -25,7 +24,7 @@ const stubPdf = async (conversation, report) => ({
 });
 
 function app(extra = {}) {
-  return createApp({ ...offline, renderPdf: stubPdf, extractors: { chatgpt: fixtureExtractor }, ...extra });
+  return testApp({ ...offline, renderPdf: stubPdf, extractors: { chatgpt: fixtureExtractor }, ...extra });
 }
 
 // ── Health / platforms / validation ──────────────────────────────────────────

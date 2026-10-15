@@ -5,10 +5,11 @@
   "type": "module",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
-    "test": "node --test tests/**/*.test.js",
-    "check:live": "node scripts/live-check.mjs",
+    "start": "node --disable-warning=ExperimentalWarning src/server.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch src/server.js",
+    "test": "node --disable-warning=ExperimentalWarning --test tests/**/*.test.js",
+    "check:live": "node --disable-warning=ExperimentalWarning scripts/live-check.mjs",
+    "user:create": "node --disable-warning=ExperimentalWarning scripts/create-user.mjs",
     "install:browser": "playwright install chromium"
   },
   "dependencies": {

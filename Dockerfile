@@ -24,13 +24,20 @@ RUN apt-get update \
 ENV NODE_ENV=production \
     PORT=5000 \
     CLIENT_DIST_DIR=/app/client/dist \
-    CORS_ORIGIN=http://localhost:5000
+    CORS_ORIGIN=http://localhost:5000 \
+    DB_PATH=/app/server/data/chatpdf.db
 
 WORKDIR /app/server
 COPY server/package.json server/package-lock.json ./
 RUN npm ci --omit=dev
 COPY server/src ./src
+COPY server/scripts ./scripts
 COPY --from=client-build /app/client/dist /app/client/dist
+
+# Accounts database (users, sessions, usage counts) lives in a volume so it
+# survives image upgrades. Mount it with: -v chatpdf-data:/app/server/data
+RUN mkdir -p /app/server/data && chown pwuser /app/server/data
+VOLUME ["/app/server/data"]
 
 # Run as the image's unprivileged user
 USER pwuser
@@ -39,4 +46,4 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
   CMD node -e "fetch('http://127.0.0.1:5000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["node", "src/server.js"]
+CMD ["node", "--disable-warning=ExperimentalWarning", "src/server.js"]

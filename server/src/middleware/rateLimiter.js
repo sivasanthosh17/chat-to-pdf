@@ -18,8 +18,10 @@ import { AppError } from '../utils/errors.js';
  * @param {number} options.max          - requests allowed per window per IP
  * @param {string} [options.name]       - label used in the error message
  * @param {() => number} [options.now]  - injectable clock for tests
+ * @param {(req) => string} [options.key]   - what to count by (default: client IP)
+ * @param {(req) => boolean} [options.skip] - exempt some requests (e.g. admins)
  */
-export function createRateLimiter({ windowMs, max, name = 'requests', now = Date.now }) {
+export function createRateLimiter({ windowMs, max, name = 'requests', now = Date.now, key: keyOf, skip }) {
   const hits = new Map(); // ip → { count, resetAt }
 
   const sweep = setInterval(() => {
@@ -29,7 +31,8 @@ export function createRateLimiter({ windowMs, max, name = 'requests', now = Date
   sweep.unref?.();
 
   function rateLimiter(req, res, next) {
-    const key = req.ip || req.socket?.remoteAddress || 'unknown';
+    if (skip?.(req)) return next();
+    const key = keyOf?.(req) || req.ip || req.socket?.remoteAddress || 'unknown';
     const t = now();
     let entry = hits.get(key);
     if (!entry || entry.resetAt <= t) {

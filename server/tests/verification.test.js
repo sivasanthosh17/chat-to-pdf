@@ -60,19 +60,20 @@ describe('verifyConversation', () => {
     assert.ok(report.errors.some((e) => e.includes('index=')));
   });
 
-  it('notes (but does not penalise) consecutive same-role messages', () => {
+  it('records (but does not penalise or print) consecutive same-role messages', () => {
     const conv = makeConversation();
     conv.messages[1].role = 'user';
     const report = verifyConversation(conv);
     assert.equal(report.grade, 'verified');
-    assert.ok(report.notes.some((n) => n.includes('consecutive messages share a role')));
+    assert.equal(report.checks.roleSequence.consecutive, 1);
+    assert.deepEqual(report.notes, []);
   });
 
   it('warns when duplicate consecutive messages are detected and keeps them', () => {
     const conv = makeConversation();
     conv.messages[1] = { ...conv.messages[0], index: 1 };
     const report = verifyConversation(conv);
-    assert.ok(report.warnings.some((w) => w.includes('Duplicate')));
+    assert.ok(report.warnings.includes('Duplicate: messages 1 and 2 are identical. Both are kept, as in the original.'));
     assert.equal(report.passed, true);
   });
 
@@ -101,7 +102,7 @@ describe('verifyConversation', () => {
   it('errors when extractionStatus is failed', () => {
     const report = verifyConversation(makeConversation({ extractionStatus: 'failed' }));
     assert.equal(report.passed, false);
-    assert.ok(report.errors.some((e) => e.includes('status=failed')));
+    assert.ok(report.errors.includes('The conversation could not be read, so no PDF was made.'));
   });
 
   it('grades partial extraction as incomplete (PDF allowed with banner)', () => {
@@ -117,7 +118,7 @@ describe('verifyConversation', () => {
     const report = verifyConversation(conv);
     assert.equal(report.passed, true);
     assert.equal(report.grade, 'unverified');
-    assert.ok(report.notes.some((n) => n.includes('No independent source')));
+    assert.deepEqual(report.notes, [], 'the reason is stated once, by the grade text in the PDF/UI');
   });
 
   it('does not accept isVerified=true without a source-match method', () => {
@@ -130,7 +131,7 @@ describe('verifyConversation', () => {
     const conv = makeConversation();
     conv.messages[0].hasMath = true;
     const report = verifyConversation(conv);
-    assert.ok(report.warnings.some((w) => w.includes('mathematical expressions')));
+    assert.ok(report.warnings.includes('Message 1 contains maths, shown as LaTeX source rather than typeset formulas.'));
     assert.equal(report.grade, 'verified_with_warnings');
   });
 
@@ -138,14 +139,14 @@ describe('verifyConversation', () => {
     const conv = makeConversation();
     conv.messages[0].hasCodeBlocks = true;
     const report = verifyConversation(conv);
-    assert.ok(report.warnings.some((w) => w.includes('hasCodeBlocks=true')));
+    assert.ok(report.warnings.includes('The code in message 1 is shown as plain text, so its indentation may not be preserved.'));
   });
 
   it('warns on unsupported omissions from extractor', () => {
     const conv = makeConversation();
-    conv.verification.unsupportedOmissions = ['2 × image'];
+    conv.verification.unsupportedOmissions = ['2 images', '1 attachment', '4 tool outputs'];
     const report = verifyConversation(conv);
-    assert.ok(report.warnings.some((w) => w.includes('Content not reproduced') && w.includes('2 × image')));
+    assert.ok(report.warnings.includes('Not included in this PDF (each is marked where it occurred): 2 images, 1 attachment and 4 tool outputs.'));
   });
 
   it('surfaces extractor warnings and mismatches', () => {

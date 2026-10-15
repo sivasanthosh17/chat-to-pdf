@@ -1,5 +1,4 @@
-import React, { useEffect, useState } from 'react';
-import { Navbar } from '../components/Navbar';
+import React, { useEffect, useRef, useState } from 'react';
 import { Hero } from '../components/Hero';
 import { ConverterForm } from '../components/ConverterForm';
 import { ConversionProgress } from '../components/ConversionProgress';
@@ -7,13 +6,17 @@ import { ResultPanel } from '../components/ResultPanel';
 import { ErrorPanel } from '../components/ErrorPanel';
 import { ConversationViewer } from '../components/ConversationViewer';
 import { RecentConversions } from '../components/RecentConversions';
+import { AuthCard } from '../components/AuthCard';
 import { HowItWorks, PlatformSupport, Limitations } from '../components/InfoSections';
-import { Icon } from '../components/Icon';
-import { useServerHealth } from '../hooks/useServerHealth';
 import { useConversion } from '../hooks/useConversion';
+import { downloadResult } from '../services/download';
+import { loadDownloadPrefs } from '../services/preferences';
 
-export function HomePage() {
-  const health = useServerHealth();
+/**
+ * Converter for logged-in users. App keys this component by user id, so the
+ * in-tab history (and its PDFs) is discarded on logout or account switch.
+ */
+function Converter({ onSessionExpired }) {
   const { state, elapsed, history, convert, cancel, retry, reset, show, clearHistory } = useConversion();
   const [url, setUrl] = useState('');
   const [platform, setPlatform] = useState('auto');
@@ -28,6 +31,23 @@ export function HomePage() {
     el.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: state.status === 'running' ? 'nearest' : 'start' });
   }, [state.status, state.id]);
 
+  // A PDF rebuilt from the download dialog is saved as soon as it is ready
+  const autoDownloadedRef = useRef(null);
+  useEffect(() => {
+    if (state.status === 'success' && state.autoDownload && autoDownloadedRef.current !== state.id) {
+      autoDownloadedRef.current = state.id;
+      downloadResult(state.result);
+    }
+  }, [state]);
+
+  // The session ended (expired, logged out elsewhere, account disabled)
+  useEffect(() => {
+    if (state.status === 'error' && state.error?.code === 'UNAUTHENTICATED') onSessionExpired();
+  }, [state, onSessionExpired]);
+
+  const rebuild = (options) =>
+    convert({ mode: 'pdf', url: state.url, platform: state.platform, options, autoDownload: true });
+
   const fillLink = (item) => {
     setUrl(item.url);
     setPlatform(item.platform || 'auto');
@@ -35,85 +55,71 @@ export function HomePage() {
   };
 
   return (
-    <div className="app" id="top">
-      <div className="backdrop" aria-hidden="true" />
-      <Navbar serverStatus={health.status} onRecheck={health.recheck} />
-
-      <main className="main">
-        <Hero />
-
-        {health.status === 'error' && (
-          <div className="banner" role="status">
-            <Icon name="alert" size={18} />
-            <span>
-              The conversion server is not reachable. Start the backend (<code>cd server &amp;&amp; npm run dev</code>) and{' '}
-              <button type="button" className="link-button" onClick={health.recheck}>check again</button>.
-            </span>
-          </div>
-        )}
-
-        <section className="card converter-card" aria-label="Convert a shared conversation">
-          <ConverterForm
-            url={url}
-            onUrlChange={setUrl}
-            platform={platform}
-            onPlatformChange={setPlatform}
-            busy={busy}
-            onSubmit={convert}
-          />
-        </section>
-
-        {state.status === 'running' && (
-          <ConversionProgress
-            mode={state.mode}
-            stages={state.stages}
-            elapsed={elapsed}
-            startedAt={state.startedAt}
-            onCancel={cancel}
-          />
-        )}
-
-        {state.status === 'error' && <ErrorPanel error={state.error} onRetry={retry} onReset={reset} />}
-
-        {state.status === 'success' && state.mode === 'pdf' && (
-          <ResultPanel
-            key={state.id}
-            result={state.result}
-            durationMs={state.durationMs}
-            fromHistory={state.fromHistory}
-            onReset={reset}
-          />
-        )}
-
-        {state.status === 'success' && state.mode === 'inspect' && (
-          <ConversationViewer
-            conversation={state.result.conversation}
-            verification={state.result.verification}
-            onClose={reset}
-          />
-        )}
-
-        <RecentConversions
-          items={history}
-          activeId={state.status === 'success' || state.status === 'error' ? state.id : null}
-          onShow={show}
-          onRetry={(item) => {
-            fillLink(item);
-            convert({ mode: 'pdf', url: item.url, platform: item.platform });
-          }}
-          onUseLink={fillLink}
-          onClear={clearHistory}
+    <>
+      <section className="card converter-card" aria-label="Convert a shared conversation">
+        <ConverterForm
+          url={url}
+          onUrlChange={setUrl}
+          platform={platform}
+          onPlatformChange={setPlatform}
+          busy={busy}
+          onSubmit={(request) =>
+            // The first PDF already follows the remembered download preference
+            convert(request.mode === 'pdf' ? { ...request, options: loadDownloadPrefs() } : request)
+          }
         />
+      </section>
 
-        <HowItWorks />
-        <PlatformSupport />
-        <Limitations />
-      </main>
+      {state.status === 'running' && (
+        <ConversionProgress mode={state.mode} stages={state.stages} elapsed={elapsed} startedAt={state.startedAt} onCancel={cancel} />
+      )}
 
-      <footer className="footer">
-        <span className="brand-name small">ChatPDF<span>Studio</span></span>
-        <span>Conversations are processed in memory and never stored.</span>
-      </footer>
-    </div>
+      {state.status === 'error' && <ErrorPanel error={state.error} onRetry={retry} onReset={reset} />}
+
+      {state.status === 'success' && state.mode === 'pdf' && (
+        <ResultPanel
+          key={state.id}
+          result={state.result}
+          durationMs={state.durationMs}
+          fromHistory={state.fromHistory}
+          onRebuild={rebuild}
+          onReset={reset}
+        />
+      )}
+
+      {state.status === 'success' && state.mode === 'inspect' && (
+        <ConversationViewer conversation={state.result.conversation} verification={state.result.verification} onClose={reset} />
+      )}
+
+      <RecentConversions
+        items={history}
+        activeId={state.status === 'success' || state.status === 'error' ? state.id : null}
+        onShow={show}
+        onRetry={(item) => {
+          fillLink(item);
+          convert({ mode: 'pdf', url: item.url, platform: item.platform, options: loadDownloadPrefs() });
+        }}
+        onUseLink={fillLink}
+        onClear={clearHistory}
+      />
+    </>
+  );
+}
+
+export function HomePage({ auth }) {
+  return (
+    <>
+      <Hero />
+
+      {auth.status === 'authenticated' && <Converter key={auth.user.id} onSessionExpired={auth.refresh} />}
+      {(auth.status === 'anonymous' || auth.status === 'offline') && (
+        <AuthCard signupAllowed={auth.signupAllowed} onLogin={auth.login} onSignup={auth.signup} />
+      )}
+      {auth.status === 'loading' && <section className="card converter-card auth-loading" aria-busy="true" />}
+
+      <HowItWorks />
+      <PlatformSupport />
+      <Limitations />
+    </>
   );
 }

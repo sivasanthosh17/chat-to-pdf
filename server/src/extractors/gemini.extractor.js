@@ -40,6 +40,7 @@ import { withBrowserPage } from '../services/browser.service.js';
 import { AppError, normalizeUpstreamError } from '../utils/errors.js';
 import { buildTextMessage, buildHtmlMessage } from './shared/messageBuilder.js';
 import { htmlToBlocks, referenceText } from './shared/htmlBlocks.js';
+import { plural, countPhrases } from '../utils/wording.js';
 
 const PLATFORM = ALLOWED_PLATFORMS.gemini;
 
@@ -111,7 +112,7 @@ export function parseGeminiHtml(html, sourceUrl) {
   const messages = [];
   const warnings = [];
   const mismatches = [];
-  const omissions = [];
+  const omissionCounts = {};
   let expectedMessages = 0;
 
   turns.forEach((turn, t) => {
@@ -124,7 +125,7 @@ export function parseGeminiHtml(html, sourceUrl) {
       const prompt = readUserPrompt($, userEl[0]);
       const files = $(userEl).find(GEMINI_SELECTORS.attachments).children().length;
       const notices = Array.from({ length: files }, () => ({ type: 'omitted', kind: 'attachment', label: '' }));
-      if (files) omissions.push(`turn ${turnNo}: ${files} uploaded file(s)`);
+      if (files) omissionCounts['uploaded file'] = (omissionCounts['uploaded file'] || 0) + files;
 
       if (prompt.trim() || files) {
         const { message } = buildTextMessage({
@@ -137,16 +138,16 @@ export function parseGeminiHtml(html, sourceUrl) {
         if (!prompt.trim()) message.structuredBlocks = notices;
         messages.push(message);
       } else {
-        mismatches.push(`Turn ${turnNo}: prompt element present but empty.`);
+        mismatches.push(`Your message in exchange ${turnNo} appears empty on the share page.`);
       }
     } else {
-      mismatches.push(`Turn ${turnNo}: no prompt element found.`);
+      mismatches.push(`Your message in exchange ${turnNo} could not be found on the share page.`);
     }
 
     // ── Model reply ──
     const responseEl = $(turn).find(GEMINI_SELECTORS.response).first();
     if (!responseEl.length) {
-      mismatches.push(`Turn ${turnNo}: no reply element found.`);
+      mismatches.push(`Gemini's reply in exchange ${turnNo} could not be found on the share page.`);
       return;
     }
     expectedMessages++;
@@ -154,22 +155,22 @@ export function parseGeminiHtml(html, sourceUrl) {
     const contentEl = markdownEl.length ? markdownEl[0] : responseEl[0];
 
     const converted = htmlToBlocks($, contentEl);
-    omissions.push(...converted.omissions.map((o) => `turn ${turnNo}: ${o}`));
+    for (const kind of converted.omissions) omissionCounts[kind] = (omissionCounts[kind] || 0) + 1;
     const raw = referenceText($, contentEl);
 
     if (!raw.trim() && !converted.blocks.some((b) => b.type === 'omitted')) {
-      mismatches.push(`Turn ${turnNo}: reply is empty on the page.`);
+      mismatches.push(`Gemini's reply in exchange ${turnNo} appears empty on the share page.`);
       return;
     }
 
-    const { message, formattingFallback, crossCheck } = buildHtmlMessage({
+    const { message, formattingFallback } = buildHtmlMessage({
       index: messages.length,
       role: 'assistant',
       converted,
       referenceText: raw
     });
     if (formattingFallback) {
-      warnings.push(`Message ${message.index + 1}: formatting could not be reproduced exactly (difference at character ${crossCheck.firstDifferenceAt}), so it is shown as plain page text.`);
+      warnings.push(`Message ${message.index + 1} is shown as plain text because its formatting could not be reproduced exactly. The words are unchanged.`);
     }
     messages.push(message);
   });
@@ -196,9 +197,9 @@ export function parseGeminiHtml(html, sourceUrl) {
       extractedMessageCount: messages.length,
       exactTextMatch: warnings.length === 0,
       whitespacePreserved: false,
-      unsupportedOmissions: omissions,
+      unsupportedOmissions: countPhrases(omissionCounts),
       mismatches,
-      notes: `${turns.length} turn(s) found on the rendered page; each reply's structured text was cross-checked against the raw page text. Gemini exposes no independent source payload, so completeness is not verified.`
+      notes: `Read from the share page as displayed: ${plural(turns.length, 'exchange')}, with every reply's text checked against the page.`
     }
   });
 }

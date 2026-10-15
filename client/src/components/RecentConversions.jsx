@@ -57,6 +57,7 @@ export function RecentConversions({ items, activeId, onShow, onRetry, onUseLink,
                 </span>
                 <span className="recent-meta">
                   {ok ? `${PLATFORM_NAMES[platform]} · ${item.result.messageCount} messages · ` : ''}
+                  {ok && item.result.appliedOptions?.userMessageMaxLines ? `your messages: first ${item.result.appliedOptions.userMessageMaxLines} lines · ` : ''}
                   <button type="button" className="link-button" onClick={() => onUseLink(item)} title="Put this link back in the input">
                     {shortUrl(item.url)}
                   </button>

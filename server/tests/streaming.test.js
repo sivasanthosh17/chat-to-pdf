@@ -4,11 +4,10 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createApp } from '../src/app.js';
 import { AppError } from '../src/utils/errors.js';
 import { parseChatGptSharePayload } from '../src/extractors/chatgpt.extractor.js';
 import { withBrowserPage, getBrowserPoolStats } from '../src/services/browser.service.js';
-import { jsonFixture, withServer, postJson } from './helpers.js';
+import { jsonFixture, withServer, postJson, testApp } from './helpers.js';
 
 const URL = 'https://chatgpt.com/share/fixture-conversation';
 
@@ -27,7 +26,7 @@ const stubPdf = async (conversation, report, { onStage = () => {} } = {}) => {
 };
 
 function app(extra = {}) {
-  return createApp({ validatorOptions: { skipDns: true }, renderPdf: stubPdf, extractors: { chatgpt: fixtureExtractor }, ...extra });
+  return testApp({ renderPdf: stubPdf, extractors: { chatgpt: fixtureExtractor }, ...extra });
 }
 
 async function readEvents(res) {

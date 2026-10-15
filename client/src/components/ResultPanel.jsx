@@ -1,19 +1,39 @@
 import React, { useState } from 'react';
 import { GRADE_OUTCOMES, PLATFORM_NAMES } from '../services/outcomes';
 import { Icon } from './Icon';
+import { DownloadDialog } from './DownloadDialog';
+import { downloadResult } from '../services/download';
+import { saveDownloadPrefs } from '../services/preferences';
 
 const TONE_ICON = { success: 'check', info: 'info', warning: 'alert' };
+const LONG_MESSAGE_LINES = 5;
 
 /**
  * Shown after a successful conversion: verification outcome, facts, details,
  * an in-page preview of the actual PDF, and download. The download button is
  * only rendered when a real PDF exists.
  */
-export function ResultPanel({ result, durationMs, fromHistory, onReset }) {
+export function ResultPanel({ result, durationMs, fromHistory, onReset, onRebuild }) {
   const [showDetails, setShowDetails] = useState(result.grade !== 'verified');
+  const [dialogOpen, setDialogOpen] = useState(false);
   const outcome = GRADE_OUTCOMES[result.grade] || GRADE_OUTCOMES.unverified;
   const href = result.previewUrl;
   const sizeKb = result.blob ? Math.max(1, Math.round(result.blob.size / 1024)) : null;
+
+  const lineCounts = result.userMessageLineCounts || [];
+  const applied = result.appliedOptions || {};
+  const shortenedTo = applied.userMessageMaxLines || null;
+  const hasLongMessages = lineCounts.some((c) => c > LONG_MESSAGE_LINES);
+
+  // Download always goes through the options dialog
+  const onDownloadClick = () => setDialogOpen(true);
+
+  const onConfirm = (options, needsRebuild) => {
+    setDialogOpen(false);
+    saveDownloadPrefs(options);
+    if (needsRebuild) onRebuild(options);
+    else downloadResult(result);
+  };
 
   return (
     <section className={`card result-card tone-${outcome.tone}`} aria-live="polite">
@@ -60,10 +80,26 @@ export function ResultPanel({ result, durationMs, fromHistory, onReset }) {
             </div>
           )}
 
+          {(shortenedTo || applied.includeVerificationSummary || hasLongMessages) && (
+            <div className="option-note">
+              <Icon name="file" size={15} />
+              <span>
+                {[
+                  shortenedTo && `Your messages are cut after ${shortenedTo} line${shortenedTo === 1 ? '' : 's'} (marked where cut).`,
+                  applied.includeVerificationSummary && 'Includes the verification summary.',
+                  !shortenedTo && !applied.includeVerificationSummary && 'Some of your messages are long — you can include only their first lines.'
+                ].filter(Boolean).join(' ')}
+              </span>
+              <button type="button" className="link-button" onClick={() => setDialogOpen(true)}>
+                Change
+              </button>
+            </div>
+          )}
+
           <div className="actions">
-            <a className="button button-primary" href={href} download={result.filename || 'conversation.pdf'}>
+            <button type="button" className="button button-primary" onClick={onDownloadClick}>
               <Icon name="download" size={17} /> Download PDF
-            </a>
+            </button>
             <a className="button button-ghost" href={href} target="_blank" rel="noopener noreferrer">
               <Icon name="external" size={16} /> Open in new tab
             </a>
@@ -86,6 +122,15 @@ export function ResultPanel({ result, durationMs, fromHistory, onReset }) {
           </a>
         </div>
       </div>
+
+      {dialogOpen && (
+        <DownloadDialog
+          lineCounts={lineCounts}
+          current={applied}
+          onClose={() => setDialogOpen(false)}
+          onConfirm={onConfirm}
+        />
+      )}
     </section>
   );
 }

@@ -9,7 +9,7 @@ downloadable A4 PDFs. Message text is copied verbatim — never rewritten, summa
 | Frontend | React 19 + Vite, plain CSS (light/dark, mobile-first) |
 | Backend | Node.js 22 + Express 4 (ES modules), Zod |
 | Retrieval & PDF | Playwright + Chromium, Cheerio, PDF.js (`pdfjs-dist`) for the post-render text check |
-| Tests | Node's built-in test runner (`node:test`) — 124 tests, no network access needed |
+| Tests | Node's built-in test runner (`node:test`) — 151 tests, no network access needed |
 
 ---
 
@@ -99,13 +99,51 @@ npm install
 npm run dev                  # http://localhost:5173  (proxies /api → :5000)
 ```
 
-Open http://localhost:5173, paste a public share link, and choose **Convert to PDF** or **Preview messages**.
+Open http://localhost:5173, log in, paste a public share link, and choose **Convert to PDF** or **Preview messages**.
+
+**First admin account.** Converting needs an account. Anyone can sign up as a *User* on the page (unless
+`ALLOW_SIGNUP=false`); the first *Admin* is created in one of two ways:
+
+```bash
+# A) once, from the command line (asks for the password)
+cd server
+npm run user:create -- --email you@example.com --role admin
+
+# B) or in server/.env — created on start-up when no admin exists yet
+ADMIN_EMAIL=you@example.com
+ADMIN_PASSWORD=<at least 10 characters>
+```
+
+## Accounts and roles
+
+| | Visitor (not logged in) | User | Admin |
+|---|---|---|---|
+| Landing page, how it works, platforms | ✓ | ✓ | ✓ |
+| Convert, preview, download options | — | ✓ | ✓ (no conversion rate limit) |
+| Change own password | — | ✓ | ✓ |
+| Dashboard: conversions per day, by platform, outcomes, success rate | — | — | ✓ |
+| Manage accounts: create, make admin/user, disable/enable, delete | — | — | ✓ |
+
+- The server enforces every rule (`401` when not logged in, `403` for a role that is not allowed); the UI
+  only hides what you cannot use.
+- Passwords: at least 10 characters, stored as salted scrypt hashes. Sessions: a random token in an
+  HttpOnly, SameSite=Lax cookie (Secure in production); only its SHA-256 hash is stored; expires after
+  `SESSION_TTL_DAYS` (default 7).
+- Disabling an account or changing a password signs that account out of its other devices immediately.
+- An admin cannot demote, disable or delete themselves, and the last active admin can never be removed.
+- Login and sign-up are rate limited per IP; conversions are limited per account (admins exempt).
+- State-changing requests from other websites are rejected (Origin check), in addition to SameSite cookies.
+- **What is stored:** accounts, sessions, and one usage row per conversion (user, time, platform, outcome,
+  message and page counts, duration). **Share links and conversation text are never stored.** Data lives in
+  one SQLite file (`DB_PATH`, default `server/data/chatpdf.db`), using Node's built-in `node:sqlite` — no
+  database server and no extra dependency. (It is marked experimental in Node 22; the npm scripts hide that
+  warning.)
 
 ### Tests
 
 ```bash
 cd server
-npm test                     # 124 tests, ~45 s; uses saved fixtures, never the network
+npm test                     # 151 tests, ~80 s; uses saved fixtures, never the network
 ```
 
 Coverage includes: URL/SSRF validation (private ranges, DNS answers, redirects to other hosts, metadata
@@ -142,8 +180,14 @@ npm run build                # → client/dist
 
 ```bash
 docker build -t chatpdf-studio .
-docker run --rm -p 5000:5000 -e CORS_ORIGIN=https://your.domain chatpdf-studio
+docker run -d -p 5000:5000 -v chatpdf-data:/app/server/data \
+  -e CORS_ORIGIN=https://your.domain \
+  -e ADMIN_EMAIL=you@example.com -e ADMIN_PASSWORD='<at least 10 characters>' \
+  chatpdf-studio
 ```
+
+The `chatpdf-data` volume keeps accounts and usage counts across upgrades. `ADMIN_*` is only used while no
+admin exists; you can remove it afterwards.
 
 The image builds the React app, then runs Express on Playwright's official image
 (`mcr.microsoft.com/playwright:v1.64.0-noble`, which **must match** the exact `playwright` version in
@@ -190,8 +234,13 @@ limiter is per process — use a shared limiter at the proxy if you run several 
 | `CORS_ORIGIN` | http://localhost:5173 | Comma-separated allowed browser origins |
 | `CLIENT_DIST_DIR` | — | Serve the built frontend from this directory |
 | `TRUST_PROXY` | — | Express `trust proxy` setting (e.g. `1`) |
-| `RATE_LIMIT_CONVERSIONS` / `RATE_LIMIT_WINDOW_MS` | 20 / 900000 | Extract + convert requests per IP per window |
-| `RATE_LIMIT_VALIDATIONS` | 120 | URL validations per IP per minute |
+| `DB_PATH` | ./data/chatpdf.db | SQLite file for accounts, sessions and usage counts |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | — | Creates the first admin on start-up if none exists |
+| `ALLOW_SIGNUP` | true | `false` = only admins create accounts |
+| `SESSION_TTL_DAYS` | 7 | How long a login lasts |
+| `RATE_LIMIT_LOGINS` | 10 | Login / sign-up attempts per IP per 15 minutes |
+| `RATE_LIMIT_CONVERSIONS` / `RATE_LIMIT_WINDOW_MS` | 20 / 900000 | Extract + convert requests per account per window (admins exempt) |
+| `RATE_LIMIT_VALIDATIONS` | 120 | URL validations per account per minute |
 | `REQUEST_TIMEOUT_MS` | 180000 | Hard limit per conversion request |
 | `BROWSER_MAX_CONCURRENCY` / `BROWSER_MAX_QUEUE` / `BROWSER_QUEUE_WAIT_MS` | 2 / 8 / 60000 | Chromium concurrency limits |
 | `BROWSER_JOB_TIMEOUT_MS` / `PDF_RENDER_TIMEOUT_MS` | 90000 | Browser job deadlines |
@@ -209,13 +258,30 @@ All errors share one shape:
 { "success": false, "error": { "code": "NOT_FOUND", "message": "…", "statusCode": 404, "retryable": false, "details": {} } }
 ```
 
-| Endpoint | Purpose |
-|---|---|
-| `GET /api/health` | Status and current conversion capacity |
-| `GET /api/platforms` | Supported platforms, hosts and verification level |
-| `POST /api/validate-url` `{ url }` | SSRF-checked validation and platform detection |
-| `POST /api/extract` `{ url, platform? }` | Normalized conversation + verification report (JSON) |
-| `POST /api/convert` `{ url, platform? }` | The PDF (`application/pdf`) |
+| Endpoint | Access | Purpose |
+|---|---|---|
+| `GET /api/health` | public | Status and current conversion capacity |
+| `GET /api/platforms` | public | Supported platforms, hosts and verification level |
+| `GET /api/auth/me` | public | Current user (or `null`) and whether sign-up is open |
+| `POST /api/auth/signup` `{ email, password }` | public | Creates a **user** account and logs in |
+| `POST /api/auth/login` `{ email, password }` | public | Logs in (sets the session cookie) |
+| `POST /api/auth/logout` | public | Ends the session |
+| `POST /api/auth/password` `{ currentPassword, newPassword }` | user | Changes the password; signs out other devices |
+| `POST /api/validate-url` `{ url }` | user | SSRF-checked validation and platform detection |
+| `POST /api/extract` `{ url, platform? }` | user | Normalized conversation + verification report (JSON) |
+| `POST /api/convert` `{ url, platform?, options? }` | user | The PDF (`application/pdf`) |
+| `POST /api/convert/stream` `{ url, platform?, options? }` | user | Same pipeline as NDJSON: `stage` events, then `result` (PDF as base64 + metadata) or `error` |
+| `GET /api/admin/stats?days=7` | admin | Totals, per day, per platform, per outcome |
+| `GET /api/admin/users` | admin | Accounts with conversion counts |
+| `POST /api/admin/users` `{ email, password, role }` | admin | Creates an account |
+| `PATCH /api/admin/users/:id` `{ role?, disabled? }` | admin | Changes role or enables/disables |
+| `DELETE /api/admin/users/:id` | admin | Deletes an account (its usage rows stay, anonymised) |
+
+`options.userMessageMaxLines` (1–500) shows only the first N lines of the user's own messages. It is applied after
+verification, never to AI replies; each cut is marked in place and listed under "Your download choice" on the
+PDF's first page. `options.includeVerificationSummary` (default `false`) prints the verification summary box on the
+first page; the INCOMPLETE warning and the in-place "Not included…" notes print regardless. In the UI both are offered
+in the **Download options** dialog; the summary choice is remembered in the browser.
 
 `platform` is `auto` (default), `chatgpt`, `gemini` or `claude`; a value that doesn't match the URL returns
 `422 PLATFORM_MISMATCH`.
@@ -227,6 +293,9 @@ method, notes and warnings), `X-Verification-Warnings`, `X-Regression-Check` (`p
 | Code | HTTP | Meaning |
 |---|---|---|
 | `INVALID_REQUEST` | 400 / 413 | Missing/malformed body, body too large |
+| `UNAUTHENTICATED` | 401 | Not logged in, or the session ended |
+| `FORBIDDEN` | 403 | The account's role does not allow this (or a cross-site request was blocked) |
+| `CONFLICT` | 409 | An account with this email already exists |
 | `UNSUPPORTED_URL` | 422 | Not an allowlisted public share link, or failed SSRF checks |
 | `PLATFORM_MISMATCH` | 422 | Selected platform differs from the link |
 | `VERIFICATION_FAILED` | 422 | Integrity checks failed — **no PDF is produced** |
@@ -263,7 +332,9 @@ method, notes and warnings), `X-Verification-Warnings`, `X-Regression-Check` (`p
   disabled and no network access.
 - **API:** Zod validation, 16 KB body limit, per-IP rate limits, request timeouts, CORS allowlist, security
   headers, generic messages for 5xx errors, and no conversation content or request bodies in logs.
-- **Storage:** nothing is written to disk; PDFs are streamed from memory with `Cache-Control: no-store`.
+- **Storage:** conversations and PDFs are never written to disk — PDFs are streamed from memory with
+  `Cache-Control: no-store`. The only stored data is the accounts database described under
+  [Accounts and roles](#accounts-and-roles) (no links, no conversation text).
 - **Access controls:** private conversations, logins, CAPTCHAs and bot checks are never bypassed. No stealth
   plugins are used.
 

@@ -48,16 +48,16 @@ export function useConversion() {
     });
   }, []);
 
-  const run = useCallback(async ({ mode, url, platform }) => {
+  const run = useCallback(async ({ mode, url, platform, options, autoDownload = false }) => {
     controllerRef.current?.abort();
     const controller = new AbortController();
     controllerRef.current = controller;
-    lastRequestRef.current = { mode, url, platform };
+    lastRequestRef.current = { mode, url, platform, options };
 
     const id = nextId++;
     const startedAt = Date.now();
     setNow(startedAt);
-    setState({ status: 'running', id, mode, url, platform, startedAt, stages: [] });
+    setState({ status: 'running', id, mode, url, platform, options, startedAt, stages: [] });
 
     const onStage = (stage, info) => {
       setState((prev) => (prev.id === id && prev.status === 'running'
@@ -67,7 +67,7 @@ export function useConversion() {
 
     const result = mode === 'inspect'
       ? await extractConversation(url, platform, controller.signal)
-      : await convertToPdfStream(url, platform, { signal: controller.signal, onStage });
+      : await convertToPdfStream(url, platform, { signal: controller.signal, onStage, options });
 
     if (controllerRef.current !== controller) {
       if (result.previewUrl) URL.revokeObjectURL(result.previewUrl); // superseded
@@ -77,12 +77,12 @@ export function useConversion() {
 
     const finishedAt = Date.now();
     const finished = result.ok
-      ? { status: 'success', id, mode, url, platform, result, durationMs: finishedAt - startedAt }
-      : { status: 'error', id, mode, url, platform, error: result.error };
+      ? { status: 'success', id, mode, url, platform, options, result, durationMs: finishedAt - startedAt, autoDownload }
+      : { status: 'error', id, mode, url, platform, options, error: result.error };
     setState(finished);
 
     if (mode === 'pdf' && result.error?.code !== 'CANCELLED') {
-      addToHistory({ ...finished, at: finishedAt });
+      addToHistory({ ...finished, autoDownload: false, at: finishedAt });
     }
   }, [addToHistory]);
 
@@ -102,7 +102,7 @@ export function useConversion() {
   const show = useCallback((entry) => {
     controllerRef.current?.abort();
     controllerRef.current = null;
-    lastRequestRef.current = { mode: entry.mode, url: entry.url, platform: entry.platform };
+    lastRequestRef.current = { mode: entry.mode, url: entry.url, platform: entry.platform, options: entry.options };
     setState({ ...entry, fromHistory: true });
   }, []);
 

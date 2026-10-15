@@ -32,6 +32,7 @@ import { withBrowserPage } from '../services/browser.service.js';
 import { AppError, normalizeUpstreamError } from '../utils/errors.js';
 import { buildTextMessage } from './shared/messageBuilder.js';
 import { compareCompact } from './shared/textCompare.js';
+import { countPhrases, joinList, messageList } from '../utils/wording.js';
 
 const PLATFORM = ALLOWED_PLATFORMS.claude;
 const SNAPSHOT_PATH_REGEX = /^\/api\/chat_snapshots\/[A-Za-z0-9_-]+$/;
@@ -105,20 +106,20 @@ export function parseClaudeSnapshot(data, sourceUrl) {
       if (chatMessages[i].parent_message_uuid !== chatMessages[i - 1].uuid) breaks.push(i + 1);
     }
     if (breaks.length) {
-      mismatches.push(`Message chain is broken before source message(s) ${breaks.join(', ')} — messages may be missing or out of order.`);
+      mismatches.push(`Messages may be missing or out of order: the link between messages breaks before ${messageList(breaks)}.`);
     } else {
       chainVerified = true;
     }
   }
   const indices = chatMessages.map((m) => m?.index);
   if (indices.every(Number.isInteger) && indices.some((v, i) => i > 0 && v <= indices[i - 1])) {
-    warnings.push('Message index fields are not strictly increasing.');
+    warnings.push('Claude\'s message numbering is out of sequence; messages are shown in their linked order.');
   }
 
   chatMessages.forEach((raw, i) => {
     const role = raw?.sender === 'human' ? 'user' : raw?.sender === 'assistant' ? 'assistant' : null;
     if (!role) {
-      mismatches.push(`Source message ${i + 1}: unknown sender "${raw?.sender}" was not included.`);
+      mismatches.push(`Message ${i + 1} came from an unknown sender and was not included.`);
       return;
     }
 
@@ -144,7 +145,7 @@ export function parseClaudeSnapshot(data, sourceUrl) {
         notices.push({
           type: 'omitted',
           kind: 'platform activity',
-          label: Object.entries(activity).map(([label, n]) => `${n} ${label}${n > 1 ? 's' : ''}`).join(', ')
+          label: joinList(countPhrases(activity))
         });
       }
 
@@ -153,13 +154,13 @@ export function parseClaudeSnapshot(data, sourceUrl) {
       if (typeof raw.text === 'string' && raw.text.length > 0) {
         crossCheckedMessages++;
         if (!compareCompact(raw.text, originalText).match) {
-          mismatches.push(`Message ${messages.length + 1}: content segments differ from the message's text field.`);
+          mismatches.push(`Message ${messages.length + 1} does not match Claude's second copy of it word for word.`);
         }
       }
     } else if (typeof raw.text === 'string') {
       originalText = raw.text;
     } else {
-      mismatches.push(`Source message ${i + 1}: no text content found.`);
+      mismatches.push(`Message ${i + 1} has no readable text and was not included.`);
       return;
     }
 
@@ -179,7 +180,7 @@ export function parseClaudeSnapshot(data, sourceUrl) {
     });
     if (!originalText.trim()) message.structuredBlocks = notices;
     if (formattingFallback) {
-      warnings.push(`Message ${message.index + 1}: markdown structure could not be reproduced exactly, so it is shown as plain text (content unchanged).`);
+      warnings.push(`Message ${message.index + 1} is shown as plain text because its formatting could not be reproduced exactly. The words are unchanged.`);
     }
     messages.push(message);
   });
@@ -208,17 +209,15 @@ export function parseClaudeSnapshot(data, sourceUrl) {
       extractedMessageCount: messages.length,
       exactTextMatch: isVerified,
       whitespacePreserved: isVerified,
-      unsupportedOmissions: Object.entries(omissionTotals).map(
-        ([label, count]) => `${count} × ${label}`
-      ),
+      unsupportedOmissions: countPhrases(omissionTotals),
       mismatches,
       notes: [
         chainVerified
-          ? 'Message order and completeness confirmed: every message links to the previous one (parent_message_uuid chain).'
-          : 'Message order could not be confirmed from parent links.',
+          ? 'No messages are missing and the order is confirmed: each message links to the one before it.'
+          : 'The order of the messages could not be confirmed.',
         isVerified
-          ? 'Every message\'s text matched a second copy in the payload.'
-          : 'Claude share data contains only one copy of each message\'s text, so the exact text cannot be independently verified.'
+          ? 'Every message was checked word for word against a second copy in Claude\'s data.'
+          : 'Claude\'s data holds only one copy of each message, so the wording itself could not be double-checked.'
       ].join(' ')
     }
   });

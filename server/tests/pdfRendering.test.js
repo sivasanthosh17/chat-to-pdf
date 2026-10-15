@@ -21,7 +21,8 @@ import { fixture, jsonFixture, makeConversation } from './helpers.js';
 async function renderAndRead(conversation) {
   const report = verifyConversation(conversation);
   assert.equal(report.passed, true, `verification must pass: ${report.errors.join('; ')}`);
-  const result = await renderConversationToPdf(conversation, report);
+  // Include the optional summary box so its wording is covered too
+  const result = await renderConversationToPdf(conversation, { ...report, showSummary: true });
   const text = await extractPdfText(result.buffer);
   const compact = compactForComparison(text.pages.join('\n') + '\n' + text.visualPages.join('\n'));
   return { result, text, compact };
@@ -80,7 +81,7 @@ test('PDF (Claude fixture): renders with tool-use notice and unverified label', 
   const { result, compact } = await renderAndRead(conv);
   assert.equal(result.regressionCheck.passed, true, JSON.stringify(result.regressionCheck));
   assert.ok(contains(compact, 'A frog jumps into the pond'));
-  assert.ok(contains(compact, '1 tool use, 1 tool result'));
+  assert.ok(contains(compact, '1 tool use and 1 tool result'));
   assert.ok(contains(compact, 'ありがとう'));
 });
 

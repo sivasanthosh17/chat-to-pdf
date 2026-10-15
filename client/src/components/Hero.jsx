@@ -27,7 +27,7 @@ export function Hero() {
         <ul className="trust-row">
           <li><Icon name="file" size={16} /> Verbatim text</li>
           <li><Icon name="shield" size={16} /> Verified where possible</li>
-          <li><Icon name="lock" size={16} /> Nothing stored</li>
+          <li><Icon name="lock" size={16} /> Conversations never stored</li>
         </ul>
       </div>
 

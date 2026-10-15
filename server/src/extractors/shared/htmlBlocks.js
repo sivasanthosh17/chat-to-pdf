@@ -126,7 +126,7 @@ function collectInline($, node, runs, fmt, ctx, opts = {}) {
       pushText(runs, '\n', {});
       return;
     case 'img':
-      ctx.omissions.push(`image${node.attribs?.alt ? ` ("${node.attribs.alt.slice(0, 60)}")` : ''}`);
+      ctx.omissions.push('image');
       return;
     default:
       break;
@@ -327,7 +327,7 @@ function walkNodes($, nodes, blocks, ctx) {
     if (node.name === 'img') {
       flush();
       const alt = node.attribs?.alt || '';
-      ctx.omissions.push(`image${alt ? ` ("${alt.slice(0, 60)}")` : ''}`);
+      ctx.omissions.push('image'); // the alt text stays on the in-place notice below
       blocks.push({ type: 'omitted', kind: 'image', label: alt });
       continue;
     }

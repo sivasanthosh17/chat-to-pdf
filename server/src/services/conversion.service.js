@@ -20,14 +20,14 @@ import { AppError, normalizeUpstreamError } from '../utils/errors.js';
  * @param {object} [progress]
  * @param {(stage: string, info?: object) => void} [progress.onStage] - 'validating' | 'retrieving' | 'verifying'
  * @param {AbortSignal} [progress.signal]   - cancels extraction (closes its browser)
- * @returns {Promise<{ validation: object, conversation: object, report: object }>}
+ * @returns {Promise<{ validation: object, conversation: object, report: object, options: object }>}
  */
 export async function retrieveAndVerify(body, { extractors, validatorOptions = {} }, { onStage = () => {}, signal } = {}) {
   const parsed = ConvertRequestSchema.safeParse(body ?? {});
   if (!parsed.success) {
     throw new AppError('INVALID_REQUEST', parsed.error.errors[0]?.message || 'Invalid request body.');
   }
-  const { url, platform: requestedPlatform } = parsed.data;
+  const { url, platform: requestedPlatform, options } = parsed.data;
 
   onStage('validating');
   const validation = await validateConversationUrl(url, validatorOptions);
@@ -58,5 +58,5 @@ export async function retrieveAndVerify(body, { extractors, validatorOptions = {
 
   onStage('verifying', { messageCount: conversation.messages.length });
   const report = verifyConversation(conversation);
-  return { validation, conversation, report };
+  return { validation, conversation, report, options };
 }

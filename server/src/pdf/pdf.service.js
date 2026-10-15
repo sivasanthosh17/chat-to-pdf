@@ -20,6 +20,7 @@
 import { buildConversationHtml } from '../templates/conversation.template.js';
 import { withBrowserPage } from '../services/browser.service.js';
 import { extractPdfText, compareSegmentsToPdf } from './pdfText.js';
+import { messageList } from '../utils/wording.js';
 
 const PDF_RENDER_TIMEOUT_MS = Number(process.env.PDF_RENDER_TIMEOUT_MS) || 90_000;
 
@@ -73,10 +74,10 @@ async function renderOnce(html, signal) {
  */
 function downgradeReport(report, regressionCheck) {
   const affected = [...new Set(regressionCheck.failures.map((f) => f.messageIndex + 1))];
+  const where = affected.length ? ` from ${messageList(affected)}` : '';
   const warning =
-    `Automated PDF text check could not find ${regressionCheck.failureCount} rendered text segment(s)` +
-    (affected.length ? ` (message${affected.length > 1 ? 's' : ''} ${affected.join(', ')})` : '') +
-    ' in the PDF text layer. Review those messages before relying on this PDF. (Right-to-left scripts can trigger this check falsely.)';
+    `The final check of this PDF could not find some text${where}. Please compare ${affected.length === 1 ? 'it' : 'them'} with the original before relying on it. ` +
+    '(Right-to-left scripts such as Arabic can trigger this check by mistake.)';
   return {
     ...report,
     grade: report.grade === 'verified' ? 'verified_with_warnings' : report.grade,

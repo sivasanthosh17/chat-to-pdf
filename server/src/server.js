@@ -1,7 +1,20 @@
 import 'dotenv/config';
-import app from './app.js';
+import { createApp } from './app.js';
+import { openDatabase } from './db/database.js';
+import { bootstrapAdmin } from './services/users.service.js';
+import { purgeExpiredSessions } from './services/session.service.js';
 
 const PORT = process.env.PORT || 5000;
+
+// Users, sessions and the usage log (never conversation content)
+const db = openDatabase();
+const adminMessage = await bootstrapAdmin(db);
+if (adminMessage) console.log(`[Server] ${adminMessage}`);
+
+purgeExpiredSessions(db);
+setInterval(() => purgeExpiredSessions(db), 60 * 60 * 1000).unref();
+
+const app = createApp({ db });
 
 const server = app.listen(PORT, () => {
   console.log(`[Server] Chat-to-PDF backend running on http://localhost:${PORT}`);
@@ -23,6 +36,7 @@ process.on('unhandledRejection', (reason) => {
 function handleShutdown(signal) {
   console.log(`\n[Server] Received ${signal}. Closing HTTP server cleanly...`);
   server.close(() => {
+    db.close();
     console.log('[Server] HTTP server closed.');
     process.exit(0);
   });

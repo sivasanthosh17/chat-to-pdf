@@ -15,6 +15,9 @@
  */
 export const ERROR_CODES = {
   INVALID_REQUEST: { status: 400, retryable: false },
+  UNAUTHENTICATED: { status: 401, retryable: false },    // not logged in / session expired
+  FORBIDDEN: { status: 403, retryable: false },          // logged in, but the role does not allow it
+  CONFLICT: { status: 409, retryable: false },           // e.g. email already registered
   UNSUPPORTED_URL: { status: 422, retryable: false },
   PLATFORM_MISMATCH: { status: 422, retryable: false },
   NOT_FOUND: { status: 404, retryable: false },           // private, deleted or never existed

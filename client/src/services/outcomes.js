@@ -48,6 +48,9 @@ const ERROR_OUTCOMES = {
   RESPONSE_TOO_LARGE: { tone: 'error', title: 'Conversation too large', hint: 'This conversation exceeds the server\'s size limit.' },
   PDF_FAILED: { tone: 'temporary', title: 'PDF generation failed', hint: 'Retry. If it keeps failing, check the server logs.' },
   CANCELLED: { tone: 'neutral', title: 'Conversion cancelled', hint: '' },
+  UNAUTHENTICATED: { tone: 'error', title: 'Please log in', hint: 'Your session has ended. Log in again to continue.' },
+  FORBIDDEN: { tone: 'error', title: 'Not allowed', hint: '' },
+  CONFLICT: { tone: 'error', title: 'Already exists', hint: '' },
   INTERNAL: { tone: 'temporary', title: 'Unexpected server error', hint: 'Retry. If it keeps failing, check the server logs.' }
 };
 

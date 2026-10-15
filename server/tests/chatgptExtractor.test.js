@@ -60,7 +60,7 @@ test('ChatGPT payload: a mismatch with linear_conversation is detected and repor
   const result = parseChatGptSharePayload(payload, SHARE_URL);
   assert.equal(result.verification.isVerified, false);
   assert.equal(result.extractionStatus, 'partial');
-  assert.ok(result.verification.mismatches.some((m) => m.includes('Message 4') && m.includes('text differs')));
+  assert.ok(result.verification.mismatches.includes("Message 4 does not match ChatGPT's second copy of it word for word."));
 
   const report = verifyConversation(result);
   assert.equal(report.grade, 'incomplete');
@@ -70,7 +70,7 @@ test('ChatGPT payload: a message missing from linear_conversation is detected', 
   const payload = jsonFixture('chatgpt-share-payload.json');
   payload.linear_conversation = payload.linear_conversation.filter((i) => i.id !== 'a3');
   const result = parseChatGptSharePayload(payload, SHARE_URL);
-  assert.ok(result.verification.mismatches.some((m) => m.includes('Message count differs')));
+  assert.ok(result.verification.mismatches.some((m) => m.includes('Some messages may be missing')));
   assert.equal(result.extractionStatus, 'partial');
 });
 
@@ -86,11 +86,11 @@ test('ChatGPT payload: without linear_conversation the result is honestly unveri
 test('ChatGPT payload: tool activity, reasoning, images and attachments are reported, never silently dropped', () => {
   const result = parseChatGptSharePayload(jsonFixture('chatgpt-share-payload.json'), SHARE_URL);
   const omissions = result.verification.unsupportedOmissions.join(' | ');
-  assert.match(omissions, /1 × tool call/);
-  assert.match(omissions, /1 × tool output/);
-  assert.match(omissions, /1 × reasoning/);
-  assert.match(omissions, /1 × image/);
-  assert.match(omissions, /1 × attachment/);
+  assert.match(omissions, /1 tool call/);
+  assert.match(omissions, /1 tool output/);
+  assert.match(omissions, /1 reasoning step/);
+  assert.match(omissions, /1 image/);
+  assert.match(omissions, /1 attachment/);
 
   // Tool activity is marked in place before the reply it belongs to
   const reply = result.messages[1];
@@ -139,7 +139,7 @@ test('ChatGPT payload: duplicate consecutive messages are preserved and flagged'
   assert.equal(result.messages[4].originalText, 'Same question');
   assert.equal(result.messages[5].originalText, 'Same question');
   const report = verifyConversation(result);
-  assert.ok(report.warnings.some((w) => w.startsWith('Duplicate consecutive messages')));
+  assert.ok(report.warnings.includes('Duplicate: messages 5 and 6 are identical. Both are kept, as in the original.'));
   assert.equal(report.passed, true);
 });
 

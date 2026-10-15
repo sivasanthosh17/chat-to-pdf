@@ -33,6 +33,7 @@ import { withBrowserPage } from '../services/browser.service.js';
 import { AppError, normalizeUpstreamError } from '../utils/errors.js';
 import { buildTextMessage, buildHtmlMessage } from './shared/messageBuilder.js';
 import { htmlToBlocks, referenceText } from './shared/htmlBlocks.js';
+import { plural, joinList, countPhrases } from '../utils/wording.js';
 
 export { parseStructuredBlocks } from './shared/markdown.js';
 
@@ -148,9 +149,7 @@ function activeBranch(mapping, currentNode) {
 }
 
 function summarizeOmissions(counts) {
-  return Object.entries(counts)
-    .map(([label, n]) => `${n} ${label}${n > 1 ? (label.endsWith('s') ? '' : 's') : ''}`)
-    .join(', ');
+  return joinList(countPhrases(counts));
 }
 
 /**
@@ -249,7 +248,7 @@ export function extractFromMappingData(serverData, sourceUrl) {
     });
     if (!originalText) built.structuredBlocks = partNotices;
     if (formattingFallback) {
-      warnings.push(`Message ${built.index + 1}: markdown structure could not be reproduced exactly, so it is shown as plain text (content unchanged).`);
+      warnings.push(`Message ${built.index + 1} is shown as plain text because its formatting could not be reproduced exactly. The words are unchanged.`);
     }
 
     // Tool activity that happened before an assistant reply belongs to that
@@ -268,31 +267,31 @@ export function extractFromMappingData(serverData, sourceUrl) {
   const mismatches = [];
   if (reference) {
     if (reference.length !== messages.length) {
-      mismatches.push(`Message count differs: linear_conversation has ${reference.length}, extracted ${messages.length}.`);
+      mismatches.push(`ChatGPT's second copy has ${plural(reference.length, 'message')}, but ${messages.length} were found. Some messages may be missing.`);
     }
     const n = Math.min(reference.length, messages.length);
     for (let i = 0; i < n; i++) {
       if (reference[i].role !== messages[i].role) {
-        mismatches.push(`Message ${i + 1}: role "${messages[i].role}" but source says "${reference[i].role}".`);
+        mismatches.push(`Message ${i + 1} is attributed to a different speaker in ChatGPT's second copy.`);
       } else if (reference[i].text !== messages[i].originalText) {
-        mismatches.push(`Message ${i + 1}: text differs from source (${reference[i].text.length} vs ${messages[i].originalText.length} characters).`);
+        mismatches.push(`Message ${i + 1} does not match ChatGPT's second copy of it word for word.`);
       }
     }
   }
 
-  const unsupportedOmissions = Object.entries(omissionTotals).map(
-    ([label, count]) => `${count} × ${label}`
-  );
+  const unsupportedOmissions = countPhrases(omissionTotals);
   if (citationsUnresolved > 0) {
-    warnings.push(`${citationsUnresolved} citation marker(s) had no source label and were removed.`);
+    warnings.push(`${plural(citationsUnresolved, 'citation')} had no source label and ${citationsUnresolved === 1 ? 'was' : 'were'} left out.`);
   }
 
   const exactTextMatch = reference !== null && mismatches.length === 0;
   const notes = [
     reference
-      ? 'Compared message-by-message against the payload\'s linear_conversation list.'
-      : 'Payload had no linear_conversation list; no independent reference was available.',
-    citationsReplaced ? `${citationsReplaced} inline citation marker(s) were replaced with the source labels ChatGPT displays.` : null
+      ? 'Every message was checked word for word against a second copy of the conversation in ChatGPT\'s data.'
+      : 'ChatGPT\'s data had no second copy of the conversation to check against.',
+    citationsReplaced
+      ? `${plural(citationsReplaced, 'citation')} ${citationsReplaced === 1 ? 'is' : 'are'} shown as the source link${citationsReplaced === 1 ? '' : 's'} ChatGPT displays.`
+      : null
   ].filter(Boolean).join(' ');
 
   return {
@@ -350,8 +349,8 @@ export function extractFromDom(html, sourceUrl) {
 
   const messages = [];
   const warnings = [];
-  const mismatches = [];
-  const omissions = [];
+  const omissionCounts = {};
+  let textMatched = true;
 
   for (const el of elements) {
     const roleAttr = $(el).attr('data-message-author-role');
@@ -368,16 +367,16 @@ export function extractFromDom(html, sourceUrl) {
     }
 
     const converted = htmlToBlocks($, el);
-    omissions.push(...converted.omissions.map((o) => `message ${messages.length + 1}: ${o}`));
-    const { message, formattingFallback, crossCheck } = buildHtmlMessage({
+    for (const kind of converted.omissions) omissionCounts[kind] = (omissionCounts[kind] || 0) + 1;
+    const { message, formattingFallback } = buildHtmlMessage({
       index: messages.length,
       role: 'assistant',
       converted,
       referenceText: raw
     });
     if (formattingFallback) {
-      mismatches.push(`Message ${message.index + 1}: formatted text did not match raw page text at character ${crossCheck.firstDifferenceAt}; plain text used.`);
-      warnings.push(`Message ${message.index + 1}: shown as plain text because its formatting could not be reproduced exactly.`);
+      textMatched = false;
+      warnings.push(`Message ${message.index + 1} is shown as plain text because its formatting could not be reproduced exactly. The words are unchanged.`);
     }
     messages.push(message);
   }
@@ -398,11 +397,11 @@ export function extractFromDom(html, sourceUrl) {
       verificationMethod: 'dom_structure_crosscheck',
       sourceMessageCount: messages.length,
       extractedMessageCount: messages.length,
-      exactTextMatch: mismatches.length === 0,
+      exactTextMatch: textMatched,
       whitespacePreserved: false,
-      unsupportedOmissions: omissions,
-      mismatches,
-      notes: 'Extracted from the rendered page only. The page may virtualise or lazy-load long conversations, and no independent source payload was available, so completeness is not verified.'
+      unsupportedOmissions: countPhrases(omissionCounts),
+      mismatches: [],
+      notes: 'Read from the share page as displayed. Long conversations may load in parts, and there was no second copy to check against.'
     }
   };
 }

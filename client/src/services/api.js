@@ -39,6 +39,7 @@ async function readError(response) {
 async function postJson(path, body, signal) {
   return fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',
+    credentials: 'include', // session cookie (needed when the API is on another origin)
     headers: { 'Content-Type': 'application/json', Accept: 'application/json, application/pdf' },
     body: JSON.stringify(body),
     signal
@@ -128,12 +129,13 @@ function base64ToBlob(base64, type) {
  *
  * @param {string} url
  * @param {string} platform
- * @param {{ signal?: AbortSignal, onStage?: (stage: string, info: object) => void }} [options]
+ * @param {{ signal?: AbortSignal, onStage?: (stage: string, info: object) => void, options?: object }} [settings]
+ *   options = download options, e.g. { userMessageMaxLines: 5 }
  */
-export async function convertToPdfStream(url, platform, { signal, onStage = () => {} } = {}) {
+export async function convertToPdfStream(url, platform, { signal, onStage = () => {}, options } = {}) {
   let response;
   try {
-    response = await postJson('/convert/stream', { url, platform }, signal);
+    response = await postJson('/convert/stream', { url, platform, ...(options ? { options } : {}) }, signal);
   } catch (err) {
     return { ok: false, error: networkError(err) };
   }

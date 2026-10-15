@@ -26,6 +26,7 @@
 
 import { markdownToComparableText } from '../extractors/shared/markdown.js';
 import { blocksToPlainText, compareCompact } from '../extractors/shared/textCompare.js';
+import { joinList, messageList } from '../utils/wording.js';
 
 export const GRADES = ['verified', 'verified_with_warnings', 'unverified', 'incomplete', 'failed'];
 
@@ -53,7 +54,7 @@ export function verifyConversation(conversation) {
 
   checks.messageCount = checkMessageCount(conversation, warnings, errors);
   checks.indexContinuity = checkIndexContinuity(conversation, errors);
-  checks.roleSequence = checkRoleSequence(conversation, notes);
+  checks.roleSequence = checkRoleSequence(conversation);
   checks.blockFidelity = checkBlockFidelity(conversation, errors);
   checks.formatFlags = checkFormatFlags(conversation, warnings);
   checks.duplicateDetection = checkDuplicates(conversation, warnings);
@@ -122,15 +123,13 @@ function checkIndexContinuity(conv, errors) {
   return { passed: true, issues: [] };
 }
 
-function checkRoleSequence(conv, notes) {
+function checkRoleSequence(conv) {
   // Consecutive messages with the same role are legitimate (an assistant reply
-  // split around tool use, a prompt sent twice), so this is informational.
+  // split around tool use, a prompt sent twice). Recorded for diagnostics only;
+  // it is not something a PDF reader needs to be told.
   let consecutive = 0;
   for (let i = 1; i < conv.messages.length; i++) {
     if (conv.messages[i].role === conv.messages[i - 1].role) consecutive++;
-  }
-  if (consecutive > 0) {
-    notes.push(`${consecutive} place(s) where consecutive messages share a role; order is kept exactly as in the source.`);
   }
   return { passed: true, consecutive };
 }
@@ -160,7 +159,7 @@ function checkBlockFidelity(conv, errors) {
     conv.messages.some((m) => m.structuredBlocks?.some((b) => b.type === 'omitted'));
 
   if (totalLength === 0 && !hasOmittedOnly) {
-    errors.push('Total extracted text length is 0 — all messages appear empty after normalization.');
+    errors.push('Every message came out empty, so there is nothing to put in a PDF.');
     return { passed: false, totalLength, failures: [] };
   }
 
@@ -174,7 +173,7 @@ function checkBlockFidelity(conv, errors) {
 
   if (failures.length > 0) {
     errors.push(
-      `Structured content for message(s) ${failures.map((f) => f.index + 1).join(', ')} does not reproduce the source text exactly. PDF generation is blocked to avoid content loss.`
+      `The formatted version of ${messageList(failures.map((f) => f.index + 1))} does not match the original text exactly, so no PDF was made rather than risk losing words.`
     );
     return { passed: false, totalLength, failures };
   }
@@ -186,10 +185,10 @@ function checkFormatFlags(conv, warnings) {
   const issues = [];
   conv.messages.forEach((msg, i) => {
     if (msg.hasCodeBlocks && !msg.structuredBlocks?.some((b) => b.type === 'code')) {
-      issues.push(`Message ${i + 1} flags hasCodeBlocks=true but no code block found in structuredBlocks. Code indentation may not be preserved.`);
+      issues.push(`The code in message ${i + 1} is shown as plain text, so its indentation may not be preserved.`);
     }
     if (msg.hasTables && !msg.structuredBlocks?.some((b) => b.type === 'table')) {
-      issues.push(`Message ${i + 1} flags hasTables=true but no table block found in structuredBlocks.`);
+      issues.push(`The table in message ${i + 1} is shown as plain text.`);
     }
   });
 
@@ -213,7 +212,9 @@ function checkDuplicates(conv, warnings) {
 
   if (duplicates.length > 0) {
     warnings.push(
-      `Duplicate consecutive messages detected (messages ${duplicates.join('; ')}). They are preserved in the output exactly as in the source.`
+      duplicates.length === 1
+        ? `Duplicate: messages ${duplicates[0]} are identical. Both are kept, as in the original.`
+        : `Duplicates: messages ${joinList(duplicates)} are identical pairs. All are kept, as in the original.`
     );
     return { passed: false, duplicates };
   }
@@ -223,13 +224,14 @@ function checkDuplicates(conv, warnings) {
 function checkUnsupportedOmissions(conv, warnings) {
   const omissions = conv.verification?.unsupportedOmissions ?? [];
   if (omissions.length > 0) {
-    warnings.push(`Content not reproduced in the PDF (marked in place where it occurred): ${omissions.join('; ')}.`);
+    warnings.push(`Not included in this PDF (each is marked where it occurred): ${joinList(omissions)}.`);
   }
 
   const mathMessages = conv.messages.filter((m) => m.hasMath).map((m) => m.index + 1);
   if (mathMessages.length > 0) {
+    const one = mathMessages.length === 1;
     warnings.push(
-      `Message(s) ${mathMessages.join(', ')} contain mathematical expressions. Math is not typeset in the PDF — the LaTeX source is shown verbatim.`
+      `${one ? 'Message' : 'Messages'} ${joinList(mathMessages.map(String))} ${one ? 'contains' : 'contain'} maths, shown as LaTeX source rather than typeset formulas.`
     );
   }
 
@@ -238,7 +240,7 @@ function checkUnsupportedOmissions(conv, warnings) {
 
 function checkExtractionStatus(conv, errors) {
   if (conv.extractionStatus === 'failed') {
-    errors.push('Extractor reported status=failed. PDF generation is blocked.');
+    errors.push('The conversation could not be read, so no PDF was made.');
     return { passed: false, partial: false };
   }
   // Partial is not fatal: the PDF is generated with a visible INCOMPLETE banner.
@@ -252,10 +254,9 @@ function checkSourceVerification(conv, warnings, notes) {
     v.exactTextMatch === true &&
     ['independent_source_match', 'dom_and_payload_crosscheck'].includes(v.verificationMethod);
 
+  // The reason a conversion is unverified is stated once, by the grade text
+  // in the PDF banner and the UI; the extractor's note says how it was read.
   if (v.notes) notes.push(v.notes);
-  if (!verified) {
-    notes.push('No independent source was available to confirm that every message was retrieved exactly, so this conversion is labelled unverified.');
-  }
   for (const m of v.mismatches || []) warnings.push(m);
 
   return { verified, method: v.verificationMethod };

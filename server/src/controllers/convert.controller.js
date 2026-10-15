@@ -26,6 +26,8 @@
 
 import { retrieveAndVerify } from '../services/conversion.service.js';
 import { AppError, toErrorBody } from '../utils/errors.js';
+import { applyDownloadOptions, userMessageLineCounts } from '../services/downloadOptions.service.js';
+import { recordUsage } from '../services/usage.service.js';
 
 const MAX_REPORT_HEADER_CHARS = 6000;
 
@@ -38,6 +40,7 @@ export function encodeReportHeader(report, conversation) {
     grade: report.grade,
     method: conversation.verification.verificationMethod,
     notes: report.notes,
+    adjustments: report.adjustments || [],
     warnings: [...report.warnings]
   };
   let encoded = encodeURIComponent(JSON.stringify(payload));
@@ -78,7 +81,7 @@ function abortOnDisconnect(res) {
  * Shared steps after extraction: enforce the verification policy, render,
  * log metadata. Returns everything a response needs.
  */
-async function verifyAndRender(req, { validation, conversation, report }, { onStage, signal }) {
+async function verifyAndRender(req, { validation, conversation, report, options }, { onStage, signal }) {
   const started = Date.now();
   if (!report.passed) {
     throw new AppError(
@@ -88,23 +91,27 @@ async function verifyAndRender(req, { validation, conversation, report }, { onSt
     );
   }
 
+  // Download-time presentation choices are applied to a copy, after verification
+  const display = applyDownloadOptions(conversation, report, options);
+
   let pdf;
   try {
-    pdf = await req.app.locals.renderPdf(conversation, report, { onStage, signal });
+    pdf = await req.app.locals.renderPdf(display.conversation, display.report, { onStage, signal });
   } catch (pdfErr) {
     if (pdfErr instanceof AppError) throw pdfErr;
     throw new AppError('PDF_FAILED', 'PDF generation failed. Please retry.');
   }
 
-  const finalReport = pdf.report || report;
+  const finalReport = pdf.report || display.report;
 
   // Metadata only — never conversation content
   console.log(
     `[convert] platform=${validation.platform} messages=${conversation.messages.length} grade=${finalReport.grade} ` +
-      `pdfCheck=${pdf.regressionCheck.passed ? 'passed' : 'failed'} pages=${pdf.pageCount ?? '?'} renderMs=${Date.now() - started}`
+      `pdfCheck=${pdf.regressionCheck.passed ? 'passed' : 'failed'} pages=${pdf.pageCount ?? '?'} ` +
+      `shortened=${display.applied.shortenedMessages ?? 0} renderMs=${Date.now() - started}`
   );
 
-  return { pdf, finalReport };
+  return { pdf, finalReport, applied: display.applied };
 }
 
 /**
@@ -113,11 +120,17 @@ async function verifyAndRender(req, { validation, conversation, report }, { onSt
  */
 export async function convertToPdf(req, res, next) {
   const abort = abortOnDisconnect(res);
+  const started = Date.now();
+  let platform = null;
   res.locals.onTimeout = () => abort.abort(new DOMException('Request timed out', 'AbortError'));
   try {
     const retrieved = await retrieveAndVerify(req.body, req.app.locals, { signal: abort.signal });
     const { validation, conversation } = retrieved;
+    platform = validation.platform;
     const { pdf, finalReport } = await verifyAndRender(req, retrieved, { signal: abort.signal });
+    logConversion(req, 'pdf', started, {
+      platform, ok: true, outcome: finalReport.grade, messageCount: conversation.messages.length, pageCount: pdf.pageCount
+    });
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${safeFilename(validation.platform, conversation.title)}"`);
@@ -136,9 +149,27 @@ export async function convertToPdf(req, res, next) {
 
     return res.status(200).send(pdf.buffer);
   } catch (err) {
+    logConversion(req, 'pdf', started, { platform, ok: false, outcome: abort.signal.aborted ? 'CANCELLED' : err.code || 'INTERNAL' });
     if (abort.signal.aborted) return undefined; // client is gone; nothing to send
     next(err);
   }
+}
+
+/**
+ * Adds a row to the usage log for the admin dashboard: who, platform,
+ * outcome and counts — never the link or any conversation text.
+ */
+export function logConversion(req, kind, started, { platform = null, ok, outcome, messageCount, pageCount }) {
+  recordUsage(req.app.locals.db, {
+    userId: req.user?.id,
+    kind,
+    platform,
+    ok,
+    outcome,
+    messageCount,
+    pageCount,
+    durationMs: Date.now() - started
+  });
 }
 
 const HEARTBEAT_MS = 15_000;
@@ -163,6 +194,8 @@ const HEARTBEAT_MS = 15_000;
  */
 export async function convertToPdfStream(req, res, next) {
   const abort = abortOnDisconnect(res);
+  const started = Date.now();
+  let platform = null;
   let streaming = false;
 
   const send = (event) => {
@@ -178,7 +211,12 @@ export async function convertToPdfStream(req, res, next) {
     res.write(`${JSON.stringify(event)}\n`);
   };
 
+  let logged = false;
   const fail = (err) => {
+    if (!logged) {
+      logged = true;
+      logConversion(req, 'pdf', started, { platform, ok: false, outcome: abort.signal.aborted && err?.code !== 'TIMEOUT' ? 'CANCELLED' : err?.code || 'INTERNAL' });
+    }
     if (abort.signal.aborted && err?.code !== 'TIMEOUT') return;
     if (!streaming) {
       next(err);
@@ -199,10 +237,17 @@ export async function convertToPdfStream(req, res, next) {
   try {
     // `at` is the server time the step started, so step durations are exact even when
     // several events arrive in one network chunk
-    const onStage = (stage, info = {}) => send({ type: 'stage', stage, at: Date.now(), ...info });
+    const onStage = (stage, info = {}) => {
+      if (info.platform) platform = info.platform;
+      send({ type: 'stage', stage, at: Date.now(), ...info });
+    };
     const retrieved = await retrieveAndVerify(req.body, req.app.locals, { onStage, signal: abort.signal });
-    const { pdf, finalReport } = await verifyAndRender(req, retrieved, { onStage, signal: abort.signal });
+    const { pdf, finalReport, applied } = await verifyAndRender(req, retrieved, { onStage, signal: abort.signal });
     const { validation, conversation } = retrieved;
+    logged = true;
+    logConversion(req, 'pdf', started, {
+      platform, ok: true, outcome: finalReport.grade, messageCount: conversation.messages.length, pageCount: pdf.pageCount
+    });
 
     send({
       type: 'result',
@@ -214,9 +259,13 @@ export async function convertToPdfStream(req, res, next) {
         method: conversation.verification.verificationMethod,
         warnings: finalReport.warnings,
         notes: finalReport.notes,
+        adjustments: finalReport.adjustments || [],
         regressionCheck: pdf.regressionCheck.passed ? 'passed' : 'failed',
         messageCount: conversation.messages.length,
-        pageCount: pdf.pageCount ?? 0
+        pageCount: pdf.pageCount ?? 0,
+        // Line counts only (no text), so the UI can offer "shorten long messages"
+        userMessageLineCounts: userMessageLineCounts(conversation),
+        appliedOptions: applied
       },
       pdf: Buffer.from(pdf.buffer).toString('base64')
     });

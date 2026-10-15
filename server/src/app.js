@@ -8,6 +8,7 @@ import { errorHandler } from './middleware/errorHandler.js';
 import { securityHeaders, frontendSecurityHeaders } from './middleware/securityHeaders.js';
 import { createRateLimiter } from './middleware/rateLimiter.js';
 import { requestTimeout } from './middleware/requestTimeout.js';
+import { loadUser, requireUser, checkOrigin } from './middleware/auth.js';
 import { defaultExtractors } from './extractors/index.js';
 import { renderConversationToPdf } from './pdf/pdf.service.js';
 import { AppError, toErrorBody } from './utils/errors.js';
@@ -24,9 +25,13 @@ const num = (value, fallback) => (Number.isFinite(Number(value)) && Number(value
  * @param {object} [options.validatorOptions] - e.g. { skipDns: true } for offline tests
  * @param {object} [options.rateLimits]       - override { conversion, validation } limits
  * @param {string} [options.clientDistDir]    - serve the built frontend from here (default: CLIENT_DIST_DIR)
+ * @param {import('node:sqlite').DatabaseSync} options.db - users, sessions and usage log (see db/database.js)
+ * @param {boolean} [options.requireAuth=true] - tests of the conversion pipeline may turn the login
+ *                                              requirement off; there is deliberately no env switch for it
  * @returns {import('express').Express}
  */
 export function createApp(options = {}) {
+  if (!options.db) throw new Error('createApp requires a database (options.db).');
   const app = express();
 
   app.disable('x-powered-by');
@@ -38,6 +43,8 @@ export function createApp(options = {}) {
   app.locals.extractors = { ...defaultExtractors, ...(options.extractors || {}) };
   app.locals.renderPdf = options.renderPdf || renderConversationToPdf;
   app.locals.validatorOptions = options.validatorOptions || {};
+  app.locals.db = options.db;
+  app.locals.requireAuth = options.requireAuth !== false;
 
   // Security & Parsing Middleware
   const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
@@ -46,7 +53,8 @@ export function createApp(options = {}) {
     .filter(Boolean);
   app.use(cors({
     origin: (origin, callback) => callback(null, !origin || allowedOrigins.includes(origin)),
-    methods: ['GET', 'POST', 'OPTIONS'],
+    credentials: true, // the session cookie, for a frontend hosted on another allowed origin
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type'],
     exposedHeaders: [
       'Content-Disposition',
@@ -69,24 +77,40 @@ export function createApp(options = {}) {
   // Request logging (method, path, status, duration — never bodies)
   app.use(requestLogger);
 
-  // Rate limits: conversions are expensive (a headless browser per request)
+  // Who is asking (session cookie → req.user), and block cross-site writes
+  app.use('/api', loadUser, checkOrigin(allowedOrigins));
+
+  // Rate limits: conversions are expensive (a headless browser per request).
+  // Counted per account when logged in (per IP otherwise); admins are exempt.
   const limits = options.rateLimits || {};
+  const perAccount = (req) => (req.user ? `user:${req.user.id}` : undefined);
   const conversionLimiter = createRateLimiter({
     windowMs: num(process.env.RATE_LIMIT_WINDOW_MS, 15 * MINUTE),
     max: limits.conversion ?? num(process.env.RATE_LIMIT_CONVERSIONS, 20),
-    name: 'conversion requests'
+    name: 'conversion requests',
+    key: perAccount,
+    skip: (req) => req.user?.role === 'admin'
   });
   const validationLimiter = createRateLimiter({
     windowMs: MINUTE,
     max: limits.validation ?? num(process.env.RATE_LIMIT_VALIDATIONS, 120),
-    name: 'validation requests'
+    name: 'validation requests',
+    key: perAccount
   });
-  app.locals.rateLimiters = { conversionLimiter, validationLimiter };
+  // Slows down password guessing: attempts per IP
+  const loginLimiter = createRateLimiter({
+    windowMs: 15 * MINUTE,
+    max: limits.login ?? num(process.env.RATE_LIMIT_LOGINS, 10),
+    name: 'login attempts'
+  });
+  app.locals.rateLimiters = { conversionLimiter, validationLimiter, loginLimiter };
 
   const conversionTimeout = requestTimeout(num(process.env.REQUEST_TIMEOUT_MS, 180_000));
-  app.use('/api/convert', conversionLimiter, conversionTimeout);
-  app.use('/api/extract', conversionLimiter, conversionTimeout);
-  app.use('/api/validate-url', validationLimiter, requestTimeout(15_000));
+  // Converting requires a logged-in account (any role)
+  app.use('/api/convert', requireUser, conversionLimiter, conversionTimeout);
+  app.use('/api/extract', requireUser, conversionLimiter, conversionTimeout);
+  app.use('/api/validate-url', requireUser, validationLimiter, requestTimeout(15_000));
+  app.use(['/api/auth/login', '/api/auth/signup'], loginLimiter);
 
   // API Routes
   app.use('/api', routes);
@@ -119,5 +143,4 @@ export function createApp(options = {}) {
   return app;
 }
 
-const app = createApp();
-export default app;
+export default createApp;

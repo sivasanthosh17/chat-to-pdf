@@ -30,22 +30,22 @@ test('Claude: text segments around tool use are kept; tool use and attachments a
   assert.equal(code.code, 'const x = 1;\n  // indented\n');
 
   const notice = reply.structuredBlocks.find((b) => b.type === 'omitted');
-  assert.equal(notice.label, '1 tool use, 1 tool result');
+  assert.equal(notice.label, '1 tool use and 1 tool result');
 
   const userNotice = result.messages[0].structuredBlocks.find((b) => b.type === 'omitted');
   assert.equal(userNotice.kind, 'attachment');
   assert.equal(userNotice.label, 'notes.txt');
 
   const omissions = result.verification.unsupportedOmissions.join(' | ');
-  assert.match(omissions, /1 × tool use/);
-  assert.match(omissions, /1 × attachment/);
+  assert.match(omissions, /1 tool use/);
+  assert.match(omissions, /1 attachment/);
 });
 
 test('Claude: order confirmed by the parent chain, but text has one copy → unverified', () => {
   const result = parseClaudeSnapshot(jsonFixture('claude-snapshot.json'), URL);
   assert.equal(result.extractionStatus, 'complete');
   assert.equal(result.verification.isVerified, false);
-  assert.match(result.verification.notes, /order and completeness confirmed/i);
+  assert.match(result.verification.notes, /No messages are missing and the order is confirmed/);
   assert.equal(verifyConversation(result).grade, 'unverified');
 });
 
@@ -55,7 +55,7 @@ test('Claude: a broken parent chain (missing message) is detected → incomplete
   data.chat_messages.forEach((m, i) => { m.index = i; });
   const result = parseClaudeSnapshot(data, URL);
   assert.equal(result.extractionStatus, 'partial');
-  assert.ok(result.verification.mismatches.some((m) => m.includes('chain is broken')));
+  assert.ok(result.verification.mismatches.some((m) => m.includes('the link between messages breaks before message 2')));
   assert.equal(verifyConversation(result).grade, 'incomplete');
 });
 

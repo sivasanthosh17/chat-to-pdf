@@ -123,12 +123,20 @@ test('template: document has a restrictive CSP and no scripts', () => {
   assert.ok(!/<script/i.test(html));
 });
 
-test('template: banner reflects each grade honestly', () => {
+test('template: summary box (when requested) reflects each grade honestly', () => {
   const conv = makeConversation();
   for (const [grade, label] of [['verified', 'Verified'], ['unverified', 'Unverified'], ['incomplete', 'Incomplete'], ['verified_with_warnings', 'Verified with warnings']]) {
-    const html = buildConversationHtml(conv, { grade, warnings: [], errors: [], notes: [] });
+    const html = buildConversationHtml(conv, { grade, warnings: [], errors: [], notes: [], showSummary: true });
     assert.ok(html.includes(`Content verification: <strong>${label}</strong>`), grade);
   }
+});
+
+test('template: summary box is off by default, but the INCOMPLETE warning always prints', () => {
+  const conv = makeConversation();
+  const plain = buildConversationHtml(conv, { grade: 'verified', warnings: ['w'], errors: [], notes: ['n'] });
+  assert.ok(!plain.includes('Content verification'));
+
   const partial = buildConversationHtml({ ...conv, extractionStatus: 'partial' }, { grade: 'incomplete', warnings: [], errors: [], notes: [] });
-  assert.ok(partial.includes('INCOMPLETE EXTRACTION'));
+  assert.ok(partial.includes('INCOMPLETE — this PDF may be missing messages from the original conversation.'));
+  assert.ok(!partial.includes('Content verification'));
 });
