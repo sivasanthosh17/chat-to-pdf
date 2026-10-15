@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Understanding Neural Network Backpropagation | ChatGPT</title>
+</head>
+<body>
+  <div id="__next">
+    <main>
+      <h1>Understanding Neural Network Backpropagation</h1>
+    </main>
+  </div>
+  <script id="__NEXT_DATA__" type="application/json">
+  {
+    "props": {
+      "pageProps": {
+        "title": "Understanding Neural Network Backpropagation",
+        "serverResponse": {
+          "data": {
+            "title": "Understanding Neural Network Backpropagation",
+            "create_time": 1700000000,
+            "current_node": "node-3",
+            "mapping": {
+              "root-node": {
+                "id": "root-node",
+                "parent": null,
+                "children": ["node-1"],
+                "message": null
+              },
+              "node-1": {
+                "id": "node-1",
+                "parent": "root-node",
+                "children": ["node-2"],
+                "message": {
+                  "id": "msg-1",
+                  "author": { "role": "user", "name": null },
+                  "create_time": 1700000001,
+                  "content": {
+                    "content_type": "text",
+                    "parts": [
+                      "How does backpropagation compute gradients in a simple MLP?\nPlease include Python code with numpy."
+                    ]
+                  }
+                }
+              },
+              "node-2": {
+                "id": "node-2",
+                "parent": "node-1",
+                "children": ["node-3"],
+                "message": {
+                  "id": "msg-2",
+                  "author": { "role": "assistant", "name": null },
+                  "create_time": 1700000005,
+                  "content": {
+                    "content_type": "text",
+                    "parts": [
+                      "Backpropagation is the application of the chain rule from calculus to compute the gradient of the loss function with respect to each weight.\n\n### The Core Equations:\n- Output error: $\\delta_L = \\nabla_a C \\odot \\sigma'(z_L)$\n- Backpropagating error: $\\delta_l = ((W_{l+1})^T \\delta_{l+1}) \\odot \\sigma'(z_l)$\n\nHere is a simple NumPy implementation:\n\n```python\nimport numpy as np\n\ndef sigmoid(z):\n    return 1.0 / (1.0 + np.exp(-z))\n\ndef sigmoid_prime(z):\n    s = sigmoid(z)\n    return s * (1.0 - s)\n\n# Forward and backward pass\ndef backward_pass(x, y, w1, w2):\n    z1 = np.dot(w1, x)\n    a1 = sigmoid(z1)\n    z2 = np.dot(w2, a1)\n    a2 = sigmoid(z2)\n    \n    # Gradient computation\n    delta2 = (a2 - y) * sigmoid_prime(z2)\n    dw2 = np.outer(delta2, a1)\n    delta1 = np.dot(w2.T, delta2) * sigmoid_prime(z1)\n    dw1 = np.outer(delta1, x)\n    return dw1, dw2\n```\n\nKey takeaways:\n1. Error is propagated backwards from output layer to input layer.\n2. Gradients are computed using the chain rule.\n3. Exact indentation and whitespace must be strictly preserved."
+                    ]
+                  }
+                }
+              },
+              "node-3": {
+                "id": "node-3",
+                "parent": "node-2",
+                "children": [],
+                "message": {
+                  "id": "msg-3",
+                  "author": { "role": "user", "name": null },
+                  "create_time": 1700000020,
+                  "content": {
+                    "content_type": "text",
+                    "parts": [
+                      "Thank you! What is the computational complexity per sample?"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  </script>
+</body>
+</html>

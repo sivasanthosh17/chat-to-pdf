@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Sorting Algorithms Comparison | ChatGPT</title>
+</head>
+<body>
+  <div id="__next">
+    <main>
+      <div data-testid="conversation-turn-3">
+        <div data-message-author-role="user" class="text-message">
+          <p>Compare QuickSort and MergeSort with a Markdown table.</p>
+        </div>
+      </div>
+      <div data-testid="conversation-turn-4">
+        <div data-message-author-role="assistant" class="text-message">
+          <p>Here is the comparison between QuickSort and MergeSort:</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Algorithm</th>
+                <th>Average Time</th>
+                <th>Worst Time</th>
+                <th>Space Complexity</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>QuickSort</td>
+                <td>O(N log N)</td>
+                <td>O(N^2)</td>
+                <td>O(log N)</td>
+              </tr>
+              <tr>
+                <td>MergeSort</td>
+                <td>O(N log N)</td>
+                <td>O(N log N)</td>
+                <td>O(N)</td>
+              </tr>
+            </tbody>
+          </table>
+          <p>Python implementation of QuickSort:</p>
+          <pre><code class="language-python">def quicksort(arr):
+    if len(arr) <= 1:
+        return arr
+    pivot = arr[len(arr) // 2]
+    left = [x for x in arr if x < pivot]
+    middle = [x for x in arr if x == pivot]
+    right = [x for x in arr if x > pivot]
+    return quicksort(left) + middle + quicksort(right)
+</code></pre>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

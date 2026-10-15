@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<!-- Synthetic fixture mirroring Gemini's response to an unknown share id (Oct 2026):
+     the app redirects to /app and opens <invalid-share-link-dialog>. -->
+<html lang="en">
+<head><meta charset="utf-8"><title>Google Gemini</title></head>
+<body>
+<chat-app>
+  <chat-window><modular-zero-state></modular-zero-state></chat-window>
+  <mat-dialog-container>
+    <invalid-share-link-dialog>
+      <gem-dialog>
+        <mat-dialog-content>Link doesn't exist<p>The link might have been deleted or not entered correctly.</p></mat-dialog-content>
+        <mat-dialog-actions><button>OK</button></mat-dialog-actions>
+      </gem-dialog>
+    </invalid-share-link-dialog>
+  </mat-dialog-container>
+</chat-app>
+</body>
+</html>

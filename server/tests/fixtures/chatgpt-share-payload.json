@@ -1,0 +1,679 @@
+{
+  "title": "Synthetic fixture: share payload",
+  "create_time": 1760000000,
+  "update_time": 1760000100,
+  "conversation_id": "fixture-conversation",
+  "current_node": "a3",
+  "is_public": true,
+  "mapping": {
+    "root": {
+      "id": "root",
+      "parent": null,
+      "children": [
+        "sys"
+      ],
+      "message": null
+    },
+    "sys": {
+      "id": "sys",
+      "parent": "root",
+      "children": [
+        "u1"
+      ],
+      "message": {
+        "id": "msg-sys",
+        "author": {
+          "role": "system",
+          "name": null,
+          "metadata": {}
+        },
+        "create_time": 1760000000,
+        "content": {
+          "content_type": "text",
+          "parts": [
+            "You are ChatGPT"
+          ]
+        },
+        "status": "finished_successfully",
+        "weight": 1,
+        "metadata": {
+          "is_visually_hidden_from_conversation": true
+        },
+        "recipient": "all"
+      }
+    },
+    "u1": {
+      "id": "u1",
+      "parent": "sys",
+      "children": [
+        "a1-old",
+        "a1-tool"
+      ],
+      "message": {
+        "id": "msg-u1",
+        "author": {
+          "role": "user",
+          "name": null,
+          "metadata": {}
+        },
+        "create_time": 1760000000,
+        "content": {
+          "content_type": "text",
+          "parts": [
+            "Explain   this *literally*:\n    indented line keeps 4 spaces\n\nதமிழ் · 中文 · العربية · 😀 — ∑ x² ≠ 1/2"
+          ]
+        },
+        "status": "finished_successfully",
+        "weight": 1,
+        "metadata": {},
+        "recipient": "all"
+      }
+    },
+    "a1-old": {
+      "id": "a1-old",
+      "parent": "u1",
+      "children": [],
+      "message": {
+        "id": "msg-a1-old",
+        "author": {
+          "role": "assistant",
+          "name": null,
+          "metadata": {}
+        },
+        "create_time": 1760000000,
+        "content": {
+          "content_type": "text",
+          "parts": [
+            "OLD BRANCH SHOULD NOT APPEAR"
+          ]
+        },
+        "status": "finished_successfully",
+        "weight": 1,
+        "metadata": {},
+        "recipient": "all"
+      }
+    },
+    "a1-tool": {
+      "id": "a1-tool",
+      "parent": "u1",
+      "children": [
+        "t1"
+      ],
+      "message": {
+        "id": "msg-a1-tool",
+        "author": {
+          "role": "assistant",
+          "name": null,
+          "metadata": {}
+        },
+        "create_time": 1760000000,
+        "content": {
+          "content_type": "text",
+          "parts": [
+            "{\"search_query\":[{\"q\":\"example\"}]}"
+          ]
+        },
+        "status": "finished_successfully",
+        "weight": 1,
+        "metadata": {},
+        "recipient": "web.run"
+      }
+    },
+    "t1": {
+      "id": "t1",
+      "parent": "a1-tool",
+      "children": [
+        "th1"
+      ],
+      "message": {
+        "id": "msg-t1",
+        "author": {
+          "role": "tool",
+          "name": null,
+          "metadata": {}
+        },
+        "create_time": 1760000000,
+        "content": {
+          "content_type": "text",
+          "parts": [
+            "search results ..."
+          ]
+        },
+        "status": "finished_successfully",
+        "weight": 1,
+        "metadata": {},
+        "recipient": "all"
+      }
+    },
+    "th1": {
+      "id": "th1",
+      "parent": "t1",
+      "children": [
+        "a1"
+      ],
+      "message": {
+        "id": "msg-th1",
+        "author": {
+          "role": "assistant",
+          "name": null,
+          "metadata": {}
+        },
+        "create_time": 1760000000,
+        "content": {
+          "content_type": "thoughts",
+          "thoughts": [
+            {
+              "summary": "Thinking",
+              "content": "hidden reasoning"
+            }
+          ]
+        },
+        "status": "finished_successfully",
+        "weight": 1,
+        "metadata": {},
+        "recipient": "all"
+      }
+    },
+    "a1": {
+      "id": "a1",
+      "parent": "th1",
+      "children": [
+        "u2"
+      ],
+      "message": {
+        "id": "msg-a1",
+        "author": {
+          "role": "assistant",
+          "name": null,
+          "metadata": {}
+        },
+        "create_time": 1760000000,
+        "content": {
+          "content_type": "text",
+          "parts": [
+            "Here is the plan citeturn0search0 for you.\n\n### 2. Steps\n\n3. Third step first\n4. Fourth step\n\n```python\ndef f(x):\n    if x:\n        return x * 2  # keep indentation\n```\n\n| Name | Value |\n| --- | --- |\n| a | 1 |\n| b \\| c | 2 |\n\nInline math $x^2 + y_1$ and price $5 and $10.\n\n> quoted **bold** text"
+          ]
+        },
+        "status": "finished_successfully",
+        "weight": 1,
+        "metadata": {
+          "content_references": [
+            {
+              "matched_text": "citeturn0search0",
+              "start_idx": 17,
+              "end_idx": 36,
+              "alt": "([Example](https://example.com/source))",
+              "type": "grouped_webpages"
+            },
+            {
+              "matched_text": " ",
+              "start_idx": 0,
+              "end_idx": 1,
+              "alt": "",
+              "type": "sources_footnote"
+            }
+          ]
+        },
+        "recipient": "all"
+      }
+    },
+    "u2": {
+      "id": "u2",
+      "parent": "a1",
+      "children": [
+        "a2"
+      ],
+      "message": {
+        "id": "msg-u2",
+        "author": {
+          "role": "user",
+          "name": null,
+          "metadata": {}
+        },
+        "create_time": 1760000000,
+        "content": {
+          "content_type": "multimodal_text",
+          "parts": [
+            {
+              "content_type": "image_asset_pointer",
+              "asset_pointer": "file-service://file-abc",
+              "width": 10,
+              "height": 10
+            },
+            "What is in this image?"
+          ]
+        },
+        "status": "finished_successfully",
+        "weight": 1,
+        "metadata": {
+          "attachments": [
+            {
+              "id": "file-abc",
+              "name": "photo.png"
+            }
+          ]
+        },
+        "recipient": "all"
+      }
+    },
+    "a2": {
+      "id": "a2",
+      "parent": "u2",
+      "children": [
+        "u3"
+      ],
+      "message": {
+        "id": "msg-a2",
+        "author": {
+          "role": "assistant",
+          "name": null,
+          "metadata": {}
+        },
+        "create_time": 1760000000,
+        "content": {
+          "content_type": "text",
+          "parts": [
+            "Duplicate line\nDuplicate line"
+          ]
+        },
+        "status": "finished_successfully",
+        "weight": 1,
+        "metadata": {},
+        "recipient": "all"
+      }
+    },
+    "u3": {
+      "id": "u3",
+      "parent": "a2",
+      "children": [
+        "u3b"
+      ],
+      "message": {
+        "id": "msg-u3",
+        "author": {
+          "role": "user",
+          "name": null,
+          "metadata": {}
+        },
+        "create_time": 1760000000,
+        "content": {
+          "content_type": "text",
+          "parts": [
+            "Same question"
+          ]
+        },
+        "status": "finished_successfully",
+        "weight": 1,
+        "metadata": {},
+        "recipient": "all"
+      }
+    },
+    "u3b": {
+      "id": "u3b",
+      "parent": "u3",
+      "children": [
+        "a3"
+      ],
+      "message": {
+        "id": "msg-u3b",
+        "author": {
+          "role": "user",
+          "name": null,
+          "metadata": {}
+        },
+        "create_time": 1760000000,
+        "content": {
+          "content_type": "text",
+          "parts": [
+            "Same question"
+          ]
+        },
+        "status": "finished_successfully",
+        "weight": 1,
+        "metadata": {},
+        "recipient": "all"
+      }
+    },
+    "a3": {
+      "id": "a3",
+      "parent": "u3b",
+      "children": [],
+      "message": {
+        "id": "msg-a3",
+        "author": {
+          "role": "assistant",
+          "name": null,
+          "metadata": {}
+        },
+        "create_time": 1760000000,
+        "content": {
+          "content_type": "text",
+          "parts": [
+            "Final answer with <script>alert(1)</script> shown as text."
+          ]
+        },
+        "status": "finished_successfully",
+        "weight": 1,
+        "metadata": {},
+        "recipient": "all"
+      }
+    }
+  },
+  "linear_conversation": [
+    {
+      "id": "root",
+      "children": [
+        "sys"
+      ]
+    },
+    {
+      "id": "sys",
+      "children": [
+        "u1"
+      ],
+      "message": {
+        "id": "msg-sys",
+        "author": {
+          "role": "system",
+          "name": null,
+          "metadata": {}
+        },
+        "create_time": 1760000000,
+        "content": {
+          "content_type": "text",
+          "parts": [
+            "You are ChatGPT"
+          ]
+        },
+        "status": "finished_successfully",
+        "weight": 1,
+        "metadata": {
+          "is_visually_hidden_from_conversation": true
+        },
+        "recipient": "all"
+      }
+    },
+    {
+      "id": "u1",
+      "children": [
+        "a1-old",
+        "a1-tool"
+      ],
+      "message": {
+        "id": "msg-u1",
+        "author": {
+          "role": "user",
+          "name": null,
+          "metadata": {}
+        },
+        "create_time": 1760000000,
+        "content": {
+          "content_type": "text",
+          "parts": [
+            "Explain   this *literally*:\n    indented line keeps 4 spaces\n\nதமிழ் · 中文 · العربية · 😀 — ∑ x² ≠ 1/2"
+          ]
+        },
+        "status": "finished_successfully",
+        "weight": 1,
+        "metadata": {},
+        "recipient": "all"
+      }
+    },
+    {
+      "id": "a1-tool",
+      "children": [
+        "t1"
+      ],
+      "message": {
+        "id": "msg-a1-tool",
+        "author": {
+          "role": "assistant",
+          "name": null,
+          "metadata": {}
+        },
+        "create_time": 1760000000,
+        "content": {
+          "content_type": "text",
+          "parts": [
+            "{\"search_query\":[{\"q\":\"example\"}]}"
+          ]
+        },
+        "status": "finished_successfully",
+        "weight": 1,
+        "metadata": {},
+        "recipient": "web.run"
+      }
+    },
+    {
+      "id": "t1",
+      "children": [
+        "th1"
+      ],
+      "message": {
+        "id": "msg-t1",
+        "author": {
+          "role": "tool",
+          "name": null,
+          "metadata": {}
+        },
+        "create_time": 1760000000,
+        "content": {
+          "content_type": "text",
+          "parts": [
+            "search results ..."
+          ]
+        },
+        "status": "finished_successfully",
+        "weight": 1,
+        "metadata": {},
+        "recipient": "all"
+      }
+    },
+    {
+      "id": "th1",
+      "children": [
+        "a1"
+      ],
+      "message": {
+        "id": "msg-th1",
+        "author": {
+          "role": "assistant",
+          "name": null,
+          "metadata": {}
+        },
+        "create_time": 1760000000,
+        "content": {
+          "content_type": "thoughts",
+          "thoughts": [
+            {
+              "summary": "Thinking",
+              "content": "hidden reasoning"
+            }
+          ]
+        },
+        "status": "finished_successfully",
+        "weight": 1,
+        "metadata": {},
+        "recipient": "all"
+      }
+    },
+    {
+      "id": "a1",
+      "children": [
+        "u2"
+      ],
+      "message": {
+        "id": "msg-a1",
+        "author": {
+          "role": "assistant",
+          "name": null,
+          "metadata": {}
+        },
+        "create_time": 1760000000,
+        "content": {
+          "content_type": "text",
+          "parts": [
+            "Here is the plan citeturn0search0 for you.\n\n### 2. Steps\n\n3. Third step first\n4. Fourth step\n\n```python\ndef f(x):\n    if x:\n        return x * 2  # keep indentation\n```\n\n| Name | Value |\n| --- | --- |\n| a | 1 |\n| b \\| c | 2 |\n\nInline math $x^2 + y_1$ and price $5 and $10.\n\n> quoted **bold** text"
+          ]
+        },
+        "status": "finished_successfully",
+        "weight": 1,
+        "metadata": {
+          "content_references": [
+            {
+              "matched_text": "citeturn0search0",
+              "start_idx": 17,
+              "end_idx": 36,
+              "alt": "([Example](https://example.com/source))",
+              "type": "grouped_webpages"
+            },
+            {
+              "matched_text": " ",
+              "start_idx": 0,
+              "end_idx": 1,
+              "alt": "",
+              "type": "sources_footnote"
+            }
+          ]
+        },
+        "recipient": "all"
+      }
+    },
+    {
+      "id": "u2",
+      "children": [
+        "a2"
+      ],
+      "message": {
+        "id": "msg-u2",
+        "author": {
+          "role": "user",
+          "name": null,
+          "metadata": {}
+        },
+        "create_time": 1760000000,
+        "content": {
+          "content_type": "multimodal_text",
+          "parts": [
+            {
+              "content_type": "image_asset_pointer",
+              "asset_pointer": "file-service://file-abc",
+              "width": 10,
+              "height": 10
+            },
+            "What is in this image?"
+          ]
+        },
+        "status": "finished_successfully",
+        "weight": 1,
+        "metadata": {
+          "attachments": [
+            {
+              "id": "file-abc",
+              "name": "photo.png"
+            }
+          ]
+        },
+        "recipient": "all"
+      }
+    },
+    {
+      "id": "a2",
+      "children": [
+        "u3"
+      ],
+      "message": {
+        "id": "msg-a2",
+        "author": {
+          "role": "assistant",
+          "name": null,
+          "metadata": {}
+        },
+        "create_time": 1760000000,
+        "content": {
+          "content_type": "text",
+          "parts": [
+            "Duplicate line\nDuplicate line"
+          ]
+        },
+        "status": "finished_successfully",
+        "weight": 1,
+        "metadata": {},
+        "recipient": "all"
+      }
+    },
+    {
+      "id": "u3",
+      "children": [
+        "u3b"
+      ],
+      "message": {
+        "id": "msg-u3",
+        "author": {
+          "role": "user",
+          "name": null,
+          "metadata": {}
+        },
+        "create_time": 1760000000,
+        "content": {
+          "content_type": "text",
+          "parts": [
+            "Same question"
+          ]
+        },
+        "status": "finished_successfully",
+        "weight": 1,
+        "metadata": {},
+        "recipient": "all"
+      }
+    },
+    {
+      "id": "u3b",
+      "children": [
+        "a3"
+      ],
+      "message": {
+        "id": "msg-u3b",
+        "author": {
+          "role": "user",
+          "name": null,
+          "metadata": {}
+        },
+        "create_time": 1760000000,
+        "content": {
+          "content_type": "text",
+          "parts": [
+            "Same question"
+          ]
+        },
+        "status": "finished_successfully",
+        "weight": 1,
+        "metadata": {},
+        "recipient": "all"
+      }
+    },
+    {
+      "id": "a3",
+      "children": [],
+      "message": {
+        "id": "msg-a3",
+        "author": {
+          "role": "assistant",
+          "name": null,
+          "metadata": {}
+        },
+        "create_time": 1760000000,
+        "content": {
+          "content_type": "text",
+          "parts": [
+            "Final answer with <script>alert(1)</script> shown as text."
+          ]
+        },
+        "status": "finished_successfully",
+        "weight": 1,
+        "metadata": {},
+        "recipient": "all"
+      }
+    }
+  ]
+}

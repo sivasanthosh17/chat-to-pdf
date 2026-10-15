@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<!--
+  Synthetic fixture. Element structure mirrors a live public Gemini share page
+  observed in Oct 2026 (share-viewer / share-turn-viewer / user-query /
+  .query-text-line / response-container / message-content .markdown).
+  Code blocks, tables, KaTeX math and images were NOT present in the live page
+  that was inspected; they use standard HTML forms here.
+  All text is synthetic.
+-->
+<html lang="en">
+<head><meta charset="utf-8"><title>‎Gemini - direct access to Google AI</title></head>
+<body>
+<chat-app>
+  <share-landing-page>
+    <section class="share-landing-page_content">
+      <share-viewer>
+        <section class="share-viewer_header-container-old">
+          <div class="top-container">
+            <div class="share-title-section"><div class="title-link"><h1 class="gds-headline-m headline">Synthetic Gemini Fixture</h1></div></div>
+          </div>
+        </section>
+        <section class="share-viewer_chat-container">
+          <div class="chat-history">
+
+            <share-turn-viewer id="turn-1">
+              <div class="share-turn-viewer">
+                <user-query>
+                  <span class="user-query-container">
+                    <user-query-content class="user-query-container">
+                      <div class="user-query-container">
+                        <div class="file-preview-container"></div>
+                        <div id="user-query-content-0" class="query-content">
+                          <div class="query-bubble-with-status">
+                            <span class="user-query-bubble-with-background">
+                              <span class="horizontal-container">
+                                <div class="query-text gds-body-l">
+                                  <h5 class="cdk-visually-hidden screen-reader-user-query-label"><span>You said </span>Explain sorting…</h5>
+                                  <p class="query-text-line">Explain *sorting* in   two   languages:</p>
+                                  <p class="query-text-line">    def keep(): pass</p>
+                                  <p class="query-text-line"></p>
+                                  <p class="query-text-line">தமிழ் 中文 😀</p>
+                                </div>
+                              </span>
+                            </span>
+                          </div>
+                          <div class="luminous-actions-container"><gem-icon-button arialabel="Copy prompt"><mat-icon>content_copy</mat-icon></gem-icon-button></div>
+                        </div>
+                      </div>
+                    </user-query-content>
+                  </span>
+                </user-query>
+                <response-container class="response-container">
+                  <div class="response-container">
+                    <div class="response-container-header"><div class="response-container-header-controls"></div></div>
+                    <div class="presented-response-container">
+                      <div class="response-container-content">
+                        <structured-content-container class="message-content">
+                          <message-content>
+                            <div class="markdown markdown-main-panel">
+                              <h3>Sorting <b>basics</b></h3>
+                              <p>Sorting puts items in   order.
+                                 It is <b>fundamental</b> and <i>useful</i>; see <a href="https://en.wikipedia.org/wiki/Sorting_algorithm">this article</a> and <a href="javascript:alert(1)">bad link</a>.</p>
+                              <ul>
+                                <li><p><b>Bubble sort:</b> simple</p></li>
+                                <li><p><b>Merge sort:</b> fast</p>
+                                  <ul><li>Nested: stable</li></ul>
+                                </li>
+                              </ul>
+                              <ol start="3"><li>Third</li><li>Fourth</li></ol>
+                              <code-block><div class="code-block-decoration"><span>Python</span><button>Copy code</button></div><pre><code class="language-python">def sort(xs):
+    return sorted(xs)  # four-space indent
+</code></pre></code-block>
+                              <table>
+                                <thead><tr><th>Algorithm</th><th>Time</th></tr></thead>
+                                <tbody><tr><td>Merge</td><td>O(n log n)</td></tr><tr><td>Bubble</td><td>O(n²)</td></tr></tbody>
+                              </table>
+                              <p>Inline math <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>x</mi></mrow><annotation encoding="application/x-tex">x^2</annotation></semantics></math></span><span class="katex-html" aria-hidden="true">x2</span></span> here.</p>
+                              <p><img src="https://example.com/chart.png" alt="Sorting chart"></p>
+                              <p>Text with &lt;script&gt;alert(1)&lt;/script&gt; shown literally.</p>
+                              <script>window.injected = true;</script>
+                            </div>
+                          </message-content>
+                        </structured-content-container>
+                      </div>
+                    </div>
+                    <div class="response-container-footer"></div>
+                  </div>
+                </response-container>
+              </div>
+            </share-turn-viewer>
+
+            <share-turn-viewer id="turn-2">
+              <div class="share-turn-viewer">
+                <user-query>
+                  <user-query-content>
+                    <div class="query-content">
+                      <div class="query-text">
+                        <h5 class="cdk-visually-hidden">You said Thanks</h5>
+                        <p class="query-text-line">Thanks!</p>
+                      </div>
+                    </div>
+                  </user-query-content>
+                </user-query>
+                <response-container>
+                  <message-content>
+                    <div class="markdown"><p>You're welcome.</p></div>
+                  </message-content>
+                </response-container>
+              </div>
+            </share-turn-viewer>
+
+          </div>
+        </section>
+      </share-viewer>
+    </section>
+  </share-landing-page>
+</chat-app>
+</body>
+</html>
