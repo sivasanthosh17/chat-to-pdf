@@ -102,6 +102,7 @@ export async function readBodyWithLimit(response, maxBytes = DEFAULT_MAX_BYTES) 
  * @param {boolean}  [options.skipDns]
  * @param {Function} [options.fetchImpl]          - injectable for tests
  * @param {Function} [options.lookupImpl]         - injectable for tests
+ * @param {AbortSignal} [options.signal]          - caller cancellation
  * @returns {Promise<{ status: number, ok: boolean, url: string, headers: Headers, text: string }>}
  */
 export async function safeFetch(urlString, options) {
@@ -112,14 +113,17 @@ export async function safeFetch(urlString, options) {
     maxBytes = DEFAULT_MAX_BYTES,
     skipDns = false,
     fetchImpl = fetch,
-    lookupImpl
+    lookupImpl,
+    signal: callerSignal
   } = options;
 
   if (!Array.isArray(allowedHosts) || allowedHosts.length === 0) {
     throw new AppError('INTERNAL', 'safeFetch requires a non-empty host allowlist.');
   }
+  if (callerSignal?.aborted) throw new AppError('CANCELLED', 'The conversion was cancelled.');
 
-  const signal = AbortSignal.timeout(timeoutMs);
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal = callerSignal ? AbortSignal.any([timeoutSignal, callerSignal]) : timeoutSignal;
   let current = urlString;
 
   try {
@@ -148,6 +152,9 @@ export async function safeFetch(urlString, options) {
     }
   } catch (err) {
     if (err instanceof AppError) throw err;
+    if (callerSignal?.aborted) {
+      throw new AppError('CANCELLED', 'The conversion was cancelled.');
+    }
     if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
       throw new AppError('TIMEOUT', `Request timed out after ${timeoutMs} ms.`);
     }

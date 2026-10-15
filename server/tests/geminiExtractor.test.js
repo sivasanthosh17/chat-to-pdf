@@ -55,7 +55,15 @@ test('Gemini: reply formatting is captured as safe structured blocks', () => {
 
   const table = blocks.find((b) => b.type === 'table');
   assert.deepEqual(table.headers, ['Algorithm', 'Time']);
-  assert.deepEqual(table.rows, [['Merge', 'O(n log n)'], ['Bubble', 'O(n²)']]);
+  assert.deepEqual(table.rows, [['Merge', '\\mathcal{O}(n \\log n)'], ['Bubble', 'O(n²)']]);
+
+  // The code header label ("Python") and its buttons are UI chrome, not text
+  assert.ok(!blocks.some((b) => b.type === 'paragraph' && b.text === 'Python'));
+  assert.ok(!reply.originalText.includes('Copy code'));
+  // The image notice sits where the image was (after the math paragraph, before the next text)
+  const imageAt = blocks.findIndex((b) => b.type === 'omitted' && b.kind === 'image');
+  const mathAt = blocks.findIndex((b) => b.type === 'paragraph' && b.text.startsWith('Inline math'));
+  assert.equal(imageAt, mathAt + 1);
 });
 
 test('Gemini: math becomes LaTeX source, images become reported notices, scripts are ignored', () => {

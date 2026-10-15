@@ -109,6 +109,92 @@ export async function fetchSupportedPlatforms() {
   }
 }
 
+function base64ToBlob(base64, type) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type });
+}
+
+/**
+ * Converts a shared conversation URL to a PDF while reporting real progress.
+ *
+ * Uses POST /api/convert/stream, which emits one JSON object per line:
+ * stage events as the server reaches each step, then the result (PDF as
+ * base64) or an error. `onStage(stage, info)` is called for every stage.
+ *
+ * The returned `previewUrl` is an object URL owned by the caller, who must
+ * revoke it when the result is discarded.
+ *
+ * @param {string} url
+ * @param {string} platform
+ * @param {{ signal?: AbortSignal, onStage?: (stage: string, info: object) => void }} [options]
+ */
+export async function convertToPdfStream(url, platform, { signal, onStage = () => {} } = {}) {
+  let response;
+  try {
+    response = await postJson('/convert/stream', { url, platform }, signal);
+  } catch (err) {
+    return { ok: false, error: networkError(err) };
+  }
+
+  const contentType = response.headers.get('Content-Type') || '';
+  if (!response.ok || !contentType.includes('application/x-ndjson')) {
+    return { ok: false, error: await readError(response) };
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  const handle = (event) => {
+    if (event.type === 'stage') {
+      const { stage, ...info } = event;
+      delete info.type;
+      onStage(stage, info);
+      return null;
+    }
+    if (event.type === 'error') return { ok: false, error: event.error };
+    if (event.type === 'result') {
+      const blob = base64ToBlob(event.pdf, 'application/pdf');
+      return {
+        ok: true,
+        ...event.meta,
+        blob,
+        previewUrl: URL.createObjectURL(blob),
+        warningsTruncated: false
+      };
+    }
+    return null; // ping
+  };
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (value) buffer += decoder.decode(value, { stream: true });
+      let newline;
+      while ((newline = buffer.indexOf('\n')) !== -1) {
+        const line = buffer.slice(0, newline).trim();
+        buffer = buffer.slice(newline + 1);
+        if (!line) continue;
+        const outcome = handle(JSON.parse(line));
+        if (outcome) {
+          reader.cancel().catch(() => {});
+          return outcome;
+        }
+      }
+      if (done) break;
+    }
+  } catch (err) {
+    return { ok: false, error: networkError(err) };
+  }
+
+  return {
+    ok: false,
+    error: { code: 'NETWORK', message: 'The connection to the server closed before the PDF was ready.', retryable: true }
+  };
+}
+
 function parseReportHeader(value) {
   if (!value) return null;
   try {

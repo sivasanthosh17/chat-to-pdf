@@ -9,7 +9,7 @@ extractor tests exercise the same shapes as production.
 | `chatgpt-share-payload.json` | `GET chatgpt.com/backend-api/share/<id>` (mapping, current_node, linear_conversation, hidden system message, tool calls/output, reasoning, citation markers + content_references, image parts, attachments, an inactive branch) | Yes — field names and content types observed on public shares |
 | `chatgpt-nextdata.html` | Legacy `__NEXT_DATA__` share pages | Legacy format; current pages no longer embed it |
 | `chatgpt-dom.html` | Rendered DOM with `data-message-author-role` | Selector observed; full DOM not re-verified |
-| `gemini-share.html` | Rendered `gemini.google.com/share/<id>` page | Turn / prompt / reply structure yes; code blocks, tables, KaTeX and images use standard HTML (not seen on a live share) |
+| `gemini-share.html` | Rendered `gemini.google.com/share/<id>` page | Yes — turns, prompts, replies, code blocks, tables, KaTeX math and images |
 | `gemini-invalid.html` | Unknown/deleted Gemini share (`invalid-share-link-dialog`) | Yes |
 | `claude-snapshot.json` | `GET claude.ai/api/chat_snapshots/<id>` as loaded by the share page | Yes — field names, empty `text`, parent chain observed on public shares |
 | `claude-challenge.html` | Cloudflare bot-verification interstitial on `claude.ai/share/*` | Yes (title, wording) |

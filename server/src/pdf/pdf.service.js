@@ -54,7 +54,7 @@ function collectSegmentsInPage() {
   return segments;
 }
 
-async function renderOnce(html) {
+async function renderOnce(html, signal) {
   return withBrowserPage(
     async (page) => {
       await page.setContent(html, { waitUntil: 'load', timeout: PDF_RENDER_TIMEOUT_MS });
@@ -62,7 +62,7 @@ async function renderOnce(html) {
       const buffer = await page.pdf(PDF_OPTIONS);
       return { buffer, segments };
     },
-    { hostSuffixes: [], javaScriptEnabled: false, timeoutMs: PDF_RENDER_TIMEOUT_MS }
+    { hostSuffixes: [], javaScriptEnabled: false, timeoutMs: PDF_RENDER_TIMEOUT_MS, signal }
   );
 }
 
@@ -97,11 +97,16 @@ function downgradeReport(report, regressionCheck) {
  *
  * @param {object} conversation   - NormalizedConversation (already verified)
  * @param {object} report         - VerificationReport from verification.service.js
+ * @param {object} [options]
+ * @param {(stage: string) => void} [options.onStage] - progress callback ('rendering' | 'checking')
+ * @param {AbortSignal} [options.signal]
  * @returns {Promise<PdfResult>}
  */
-export async function renderConversationToPdf(conversation, report) {
-  const first = await renderOnce(buildConversationHtml(conversation, report));
+export async function renderConversationToPdf(conversation, report, { onStage = () => {}, signal } = {}) {
+  onStage('rendering');
+  const first = await renderOnce(buildConversationHtml(conversation, report), signal);
 
+  onStage('checking');
   const pdfText = await extractPdfText(first.buffer);
   const pageCount = pdfText.pageCount;
   const regressionCheck = compareSegmentsToPdf(first.segments, pdfText);
@@ -111,6 +116,7 @@ export async function renderConversationToPdf(conversation, report) {
   }
 
   const finalReport = downgradeReport(report, regressionCheck);
-  const second = await renderOnce(buildConversationHtml(conversation, finalReport));
+  onStage('rendering');
+  const second = await renderOnce(buildConversationHtml(conversation, finalReport), signal);
   return { buffer: second.buffer, regressionCheck, report: finalReport, pageCount };
 }

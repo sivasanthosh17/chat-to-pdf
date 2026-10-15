@@ -108,6 +108,44 @@ test('URL Validator: g.co/gemini/share short links are rewritten locally to the 
   assert.equal(other.isValid, false);
 });
 
+test('URL Validator: share.gemini.google short links are resolved with one non-followed request', async () => {
+  const seen = [];
+  const redirectTo = (location, status = 301) => async (url, init) => {
+    seen.push({ url, redirect: init.redirect });
+    return new Response(null, { status, headers: location ? { location } : {} });
+  };
+
+  const ok = await validateConversationUrl('https://share.gemini.google/1AbCdEfGhIj', {
+    skipDns: true,
+    fetchImpl: redirectTo('https://gemini.google.com/share/0a1b2c3d4e5f?social_preview=false&skid=x')
+  });
+  assert.equal(ok.isValid, true);
+  assert.equal(ok.platform, 'gemini');
+  assert.equal(ok.shareId, '0a1b2c3d4e5f');
+  assert.equal(ok.canonicalUrl, 'https://gemini.google.com/share/0a1b2c3d4e5f');
+  assert.equal(ok.shortLink, 'https://share.gemini.google/1AbCdEfGhIj');
+  assert.deepEqual(seen, [{ url: 'https://share.gemini.google/1AbCdEfGhIj', redirect: 'manual' }]);
+
+  // Redirects anywhere else are rejected (and never followed)
+  for (const target of ['https://evil.example/share/x', 'http://169.254.169.254/latest', 'https://chatgpt.com/share/abc', 'https://share.gemini.google/loop']) {
+    const bad = await validateConversationUrl('https://share.gemini.google/1AbCdEfGhIj', { skipDns: true, fetchImpl: redirectTo(target) });
+    assert.equal(bad.isValid, false, target);
+  }
+
+  const missing = await validateConversationUrl('https://share.gemini.google/1AbCdEfGhIj', { skipDns: true, fetchImpl: redirectTo(null, 404) });
+  assert.equal(missing.isValid, false);
+  assert.match(missing.error, /does not point to a shared conversation/);
+
+  const down = await validateConversationUrl('https://share.gemini.google/1AbCdEfGhIj', {
+    skipDns: true,
+    fetchImpl: async () => { throw new TypeError('fetch failed'); }
+  });
+  assert.match(down.error, /Could not reach share.gemini.google/);
+
+  const badPath = await validateConversationUrl('https://share.gemini.google/a/b', { skipDns: true, fetchImpl: redirectTo('x') });
+  assert.equal(badPath.isValid, false);
+});
+
 test('URL Validator: query strings and fragments are dropped from the canonical URL', async () => {
   const result = await validateConversationUrl('https://chatgpt.com/share/abc-123?ogimg=plain#x', { skipDns: true });
   assert.equal(result.canonicalUrl, 'https://chatgpt.com/share/abc-123');

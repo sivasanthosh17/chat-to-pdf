@@ -229,9 +229,10 @@ export function parseClaudeSnapshot(data, sourceUrl) {
  * automated access.
  *
  * @param {object} validation - result of validateConversationUrl()
+ * @param {{ signal?: AbortSignal }} [options] - aborting stops the browser job
  * @returns {Promise<object>} Validated NormalizedConversation
  */
-export async function extractClaudeConversation(validation) {
+export async function extractClaudeConversation(validation, { signal } = {}) {
   try {
     const snapshot = await withBrowserPage(async (page) => {
       let captured = null;
@@ -278,7 +279,7 @@ export async function extractClaudeConversation(validation) {
         throw new AppError('UNRECOGNIZED_FORMAT', 'The Claude share page did not load any conversation data.');
       }
       return captured;
-    }, { hostSuffixes: PLATFORM.browserHostSuffixes, timeoutMs: 60_000 });
+    }, { hostSuffixes: PLATFORM.browserHostSuffixes, timeoutMs: 60_000, signal });
 
     return parseClaudeSnapshot(snapshot, validation.canonicalUrl);
   } catch (err) {

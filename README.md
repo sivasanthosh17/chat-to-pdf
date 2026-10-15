@@ -35,7 +35,7 @@ Real-world testing was done in October 2026 against public share links found on 
 | Platform | How the conversation is retrieved | Verification | Real-world testing |
 |---|---|---|---|
 | **ChatGPT** | The JSON the share page itself loads (`chatgpt.com/backend-api/share/<id>`); rendered page as a fallback | **Verified.** Messages are compared character-for-character against `linear_conversation`, a separate copy of the active branch in the same payload | 8 public shares, 161 messages: all matched exactly; deleted share → "not found" |
-| **Gemini** | Public page rendered in a network-restricted headless browser; message DOM is read | **Unverified.** Gemini exposes no independent copy. Turn structure and text are cross-checked against the raw page text, and the PDF is labelled unverified | 1 public share (20 turns, 40 messages) matched; deleted link → "not found". Code blocks, tables, math and images were **not present** in that share; they use generic HTML handling and still need real-world confirmation |
+| **Gemini** (incl. `share.gemini.google/…` and `g.co/gemini/share/…` short links) | Public page rendered in a network-restricted headless browser; message DOM is read | **Unverified.** Gemini exposes no independent copy. Turn structure and text are cross-checked against the raw page text, and the PDF is labelled unverified | 3 public shares matched, including one with a code block, table, inline/display math and an image; deleted link → "not found" |
 | **Claude** | Public page rendered in a network-restricted browser; the page's own `chat_snapshots` response is read passively | **Unverified.** Order and completeness are confirmed through the `parent_message_uuid` chain, but the text exists in only one copy | 5 public shares matched; deleted share → "not found". Claude **intermittently shows a Cloudflare bot check** to automated browsers; the app does not bypass it and reports "Blocked by the platform" |
 
 Platforms change their pages without notice. `npm run check:live` (below) re-tests any link in seconds.
@@ -252,7 +252,7 @@ method, notes and warnings), `X-Verification-Warnings`, `X-Regression-Check` (`p
 
 ## Security
 
-- **SSRF:** HTTPS only; exact hostname allowlist (`g.co/gemini/share/<id>` is rewritten locally, not fetched);
+- **SSRF:** HTTPS only; exact hostname allowlist (`g.co/gemini/share/<id>` is rewritten locally; `share.gemini.google/<id>` is resolved with one request whose redirect is read, not followed, and must point to `gemini.google.com/share/…`);
   IP literals, credentials and non-443 ports rejected; every DNS answer must be public (loopback, RFC 1918,
   CGNAT, link-local/metadata, ULA, IPv4-mapped forms blocked); redirects are followed manually and each hop is
   re-validated; response size and time limits.
@@ -279,8 +279,6 @@ platform hostnames are ever contacted.
   execution output and reasoning traces are not reproduced; each occurrence is marked in the PDF.
 - Math is shown as LaTeX source, not typeset.
 - Gemini and Claude results are labelled unverified because those platforms provide no second copy of the text.
-- Gemini code blocks, tables, math and images use generic HTML handling that has not yet been confirmed on a
-  live share containing them.
 - The post-render PDF text check can report false gaps for right-to-left text mixed with digits or Latin
   words; the PDF is still produced, with a warning.
 - Unicode output depends on installed fonts (see Deployment).

@@ -34,7 +34,12 @@ const DEFAULT_BLOCKED_RESOURCE_TYPES = new Set(['image', 'media', 'font']);
 let active = 0;
 const waiters = [];
 
-function acquireSlot() {
+function cancelledError() {
+  return new AppError('CANCELLED', 'The conversion was cancelled.');
+}
+
+function acquireSlot(signal) {
+  if (signal?.aborted) return Promise.reject(cancelledError());
   if (active < MAX_CONCURRENCY) {
     active++;
     return Promise.resolve();
@@ -43,12 +48,22 @@ function acquireSlot() {
     return Promise.reject(new AppError('BUSY', 'The server is busy with other conversions. Please retry in a minute.'));
   }
   return new Promise((resolve, reject) => {
-    const waiter = { resolve, reject };
-    waiter.timer = setTimeout(() => {
+    const leave = (error) => {
       const i = waiters.indexOf(waiter);
       if (i !== -1) waiters.splice(i, 1);
-      reject(new AppError('BUSY', 'Timed out waiting for a free conversion slot. Please retry.'));
-    }, QUEUE_WAIT_MS);
+      clearTimeout(waiter.timer);
+      signal?.removeEventListener('abort', onAbort);
+      reject(error);
+    };
+    const onAbort = () => leave(cancelledError());
+    const waiter = {
+      resolve: () => {
+        signal?.removeEventListener('abort', onAbort);
+        resolve();
+      },
+      timer: setTimeout(() => leave(new AppError('BUSY', 'Timed out waiting for a free conversion slot. Please retry.')), QUEUE_WAIT_MS)
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
     waiters.push(waiter);
   });
 }
@@ -112,6 +127,7 @@ export function isBrowserRequestAllowed(urlString, hostSuffixes, resourceType, b
  * @param {number}   [options.timeoutMs]
  * @param {boolean}  [options.javaScriptEnabled=true]
  * @param {Set<string>} [options.blockedResourceTypes]
+ * @param {AbortSignal} [options.signal]           - aborting stops the job and closes the browser
  * @returns {Promise<T>}
  */
 export async function withBrowserPage(fn, options) {
@@ -119,14 +135,16 @@ export async function withBrowserPage(fn, options) {
     hostSuffixes,
     timeoutMs = DEFAULT_JOB_TIMEOUT_MS,
     javaScriptEnabled = true,
-    blockedResourceTypes = DEFAULT_BLOCKED_RESOURCE_TYPES
+    blockedResourceTypes = DEFAULT_BLOCKED_RESOURCE_TYPES,
+    signal
   } = options;
 
-  await acquireSlot();
+  await acquireSlot(signal);
 
   let browser = null;
   let timer = null;
   let finished = false;
+  let onAbort = null;
   const blockedRequests = [];
 
   try {
@@ -185,11 +203,18 @@ export async function withBrowserPage(fn, options) {
       );
     });
 
+    const cancelled = new Promise((_, reject) => {
+      onAbort = () => reject(cancelledError());
+      if (signal?.aborted) onAbort();
+      else signal?.addEventListener('abort', onAbort, { once: true });
+    });
+
     job.catch(() => {}); // a late rejection after the deadline must not become unhandled
-    return await Promise.race([job, deadline]);
+    return await Promise.race([job, deadline, cancelled]);
   } finally {
     finished = true;
     clearTimeout(timer);
+    if (onAbort) signal?.removeEventListener('abort', onAbort);
     if (browser) await browser.close().catch(() => {});
     releaseSlot();
   }

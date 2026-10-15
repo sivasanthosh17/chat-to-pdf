@@ -65,19 +65,19 @@ export function ConversationViewer({ conversation, verification, onClose }) {
   const assistantName = PLATFORM_NAMES[conversation.platform] || 'Assistant';
 
   return (
-    <section className="panel viewer" aria-label="Conversation preview">
+    <section className="card viewer" aria-label="Conversation preview">
       <div className="viewer-header">
         <div>
           <p className="eyebrow">{PLATFORM_NAMES[conversation.platform]} · {conversation.messages.length} messages</p>
-          <h2 className="panel-title">{conversation.title || 'Untitled conversation'}</h2>
+          <h2 className="card-title">{conversation.title || 'Untitled conversation'}</h2>
           {verification && (
-            <p className="panel-subtitle">
+            <p className="card-subtitle">
               {verification.passed ? (GRADE_LABELS[verification.grade] || verification.grade) : 'Verification failed — a PDF would be blocked'}
               {verification.warnings?.length ? ` · ${verification.warnings.length} warning(s)` : ''}
             </p>
           )}
         </div>
-        <button type="button" className="button button-secondary" onClick={onClose}>Close preview</button>
+        <button type="button" className="button button-ghost" onClick={onClose}>Close preview</button>
       </div>
 
       {verification?.errors?.length > 0 && (

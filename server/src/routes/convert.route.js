@@ -6,7 +6,7 @@
  */
 
 import { Router } from 'express';
-import { convertToPdf } from '../controllers/convert.controller.js';
+import { convertToPdf, convertToPdfStream } from '../controllers/convert.controller.js';
 
 const router = Router();
 
@@ -29,5 +29,11 @@ const router = Router();
  *   { success: false, error: { code, message, statusCode, retryable, details? } }
  */
 router.post('/convert', convertToPdf);
+
+/**
+ * POST /api/convert/stream — same pipeline, streamed as NDJSON progress
+ * events followed by the PDF (base64). See convert.controller.js.
+ */
+router.post('/convert/stream', convertToPdfStream);
 
 export default router;

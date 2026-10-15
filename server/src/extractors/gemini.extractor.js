@@ -52,7 +52,9 @@ export const GEMINI_SELECTORS = {
   queryText: '.query-text',
   attachments: '.file-preview-container',
   response: 'response-container message-content',
-  responseMarkdown: '.markdown'
+  responseMarkdown: '.markdown',
+  codeBlock: 'code-block',
+  codeDecoration: '.code-block-decoration'
 };
 
 /**
@@ -68,6 +70,24 @@ function readUserPrompt($, userEl) {
 }
 
 /**
+ * Gemini code blocks (verified Oct 2026):
+ *   code-block > … > div.code-block-decoration > span "Python" + Copy/Download buttons
+ *                  > pre > code.code-container (no language class)
+ * The header label is UI chrome, not message text: move it onto the <pre> as
+ * its language and drop the header, before both the block walker and the
+ * reference-text cross-check run.
+ */
+function normalizeCodeBlocks($) {
+  $(GEMINI_SELECTORS.codeBlock).each((_, block) => {
+    const $block = $(block);
+    const $decoration = $block.find(GEMINI_SELECTORS.codeDecoration).first();
+    const label = $decoration.children('span').first().text().trim();
+    if (label) $block.find('pre').first().attr('data-language', label);
+    $decoration.remove();
+  });
+}
+
+/**
  * Parses the rendered HTML of a Gemini share page.
  * @param {string} html
  * @param {string} sourceUrl
@@ -79,6 +99,8 @@ export function parseGeminiHtml(html, sourceUrl) {
   if ($(GEMINI_SELECTORS.invalidLink).length > 0) {
     throw new AppError('NOT_FOUND', 'Gemini reports that this shared link does not exist. It may have been deleted or the link is incomplete.');
   }
+
+  normalizeCodeBlocks($);
 
   const turns = $(GEMINI_SELECTORS.turn).toArray();
   if (turns.length === 0) {
@@ -185,9 +207,10 @@ export function parseGeminiHtml(html, sourceUrl) {
  * Loads a public Gemini share page and extracts it.
  *
  * @param {object} validation - result of validateConversationUrl()
+ * @param {{ signal?: AbortSignal }} [options] - aborting stops the browser job
  * @returns {Promise<object>} Validated NormalizedConversation
  */
-export async function extractGeminiConversation(validation) {
+export async function extractGeminiConversation(validation, { signal } = {}) {
   try {
     const html = await withBrowserPage(async (page) => {
       const response = await page.goto(validation.canonicalUrl, { waitUntil: 'domcontentloaded' });
@@ -221,7 +244,7 @@ export async function extractGeminiConversation(validation) {
       }
 
       return page.content();
-    }, { hostSuffixes: PLATFORM.browserHostSuffixes, timeoutMs: 75_000 });
+    }, { hostSuffixes: PLATFORM.browserHostSuffixes, timeoutMs: 75_000, signal });
 
     return parseGeminiHtml(html, validation.canonicalUrl);
   } catch (err) {

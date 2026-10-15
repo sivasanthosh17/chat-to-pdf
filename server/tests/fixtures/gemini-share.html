@@ -3,9 +3,10 @@
   Synthetic fixture. Element structure mirrors a live public Gemini share page
   observed in Oct 2026 (share-viewer / share-turn-viewer / user-query /
   .query-text-line / response-container / message-content .markdown).
-  Code blocks, tables, KaTeX math and images were NOT present in the live page
-  that was inspected; they use standard HTML forms here.
-  All text is synthetic.
+  Code blocks (code-block + header label + buttons), tables (table-block +
+  footer menu), math (span.math-inline[data-math] + KaTeX, incl. an SVG <img>
+  inside it) and images (single-image > a.image-source-link > img) mirror a
+  second live share inspected the same month. All text is synthetic.
 -->
 <html lang="en">
 <head><meta charset="utf-8"><title>‎Gemini - direct access to Google AI</title></head>
@@ -67,15 +68,27 @@
                                 </li>
                               </ul>
                               <ol start="3"><li>Third</li><li>Fourth</li></ol>
-                              <code-block><div class="code-block-decoration"><span>Python</span><button>Copy code</button></div><pre><code class="language-python">def sort(xs):
-    return sorted(xs)  # four-space indent
-</code></pre></code-block>
-                              <table>
-                                <thead><tr><th>Algorithm</th><th>Time</th></tr></thead>
-                                <tbody><tr><td>Merge</td><td>O(n log n)</td></tr><tr><td>Bubble</td><td>O(n²)</td></tr></tbody>
-                              </table>
-                              <p>Inline math <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>x</mi></mrow><annotation encoding="application/x-tex">x^2</annotation></semantics></math></span><span class="katex-html" aria-hidden="true">x2</span></span> here.</p>
-                              <p><img src="https://example.com/chart.png" alt="Sorting chart"></p>
+                              <response-element class="no-md md-has-block-component">
+                                <code-block class="enable-luminous-code-block"><div class="code-block"><div class="formatted-code-block-internal-container"><div class="animated-opacity">
+                                  <div class="code-block-decoration header-formatted gds-emphasized-body-m"><span>Python</span><div class="buttons"><gem-icon-button class="download-button"><button><mat-icon role="img" aria-hidden="true">download</mat-icon></button></gem-icon-button><gem-icon-button class="copy-button" data-test-id="gem-copy-button"><button><mat-icon role="img" aria-hidden="true">content_copy</mat-icon></button></gem-icon-button></div></div>
+                                  <pre><code class="code-container formatted" data-test-id="code-content" role="text"><span class="hljs-keyword">def</span> <span class="hljs-title">sort</span>(<span class="hljs-params">xs</span>):
+    <span class="hljs-keyword">return</span> sorted(xs)  <span class="hljs-comment"># four-space indent</span>
+</code></pre>
+                                </div></div></div></code-block>
+                              </response-element>
+                              <div class="horizontal-scroll-wrapper md-has-block-component">
+                                <table-block class="enable-luminous-table-block"><div class="table-block has-export-button">
+                                  <div class="table-content md-content">
+                                    <table>
+                                      <thead><tr><td>Algorithm</td><td>Time</td></tr></thead>
+                                      <tbody><tr><td>Merge</td><td><span class="math-inline" data-math="\mathcal{O}(n \log n)"><span class="katex"><span class="katex-mathml"></span><span class="katex-html" aria-hidden="true">O(n log n)</span></span></span></td></tr><tr><td>Bubble</td><td>O(n²)</td></tr></tbody>
+                                    </table>
+                                  </div>
+                                  <div class="table-footer hide-on-print"><gem-icon-button class="overflow-menu-button"><button>⋮</button></gem-icon-button><gem-popover></gem-popover></div>
+                                </div></table-block>
+                              </div>
+                              <p>Inline math <span class="math-inline" data-math="x^2"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>x</mi></mrow><annotation encoding="application/x-tex">x^2</annotation></semantics></math></span><span class="katex-html" aria-hidden="true">x<span class="vlist"><img src="data:image/svg+xml;utf8,<svg/>" alt=""></span>2</span></span></span> here.</p>
+                              <response-element class="no-md"><single-image><div class="image-container"><div class="overlay-container"><a class="image-source-link" href="https://example.com/source"><span class="link-content"><img src="https://encrypted-tbn2.gstatic.com/licensed-image?q=x" alt="Sorting chart"></span></a></div></div></single-image></response-element>
                               <p>Text with &lt;script&gt;alert(1)&lt;/script&gt; shown literally.</p>
                               <script>window.injected = true;</script>
                             </div>

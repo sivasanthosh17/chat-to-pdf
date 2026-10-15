@@ -59,6 +59,50 @@ const SHORT_LINK_ALIASES = [
 ];
 
 /**
+ * Short links whose target id differs from the short id, so they must be
+ * resolved with one request. Only the short-link host itself is contacted
+ * (redirects are not followed); the Location it returns must validate as a
+ * share URL of `platform`.
+ *
+ * share.gemini.google/<id> → 301 → gemini.google.com/share/<other id>?…
+ * (observed Oct 2026; Gemini now copies these links to the clipboard).
+ */
+const REDIRECT_SHORT_LINKS = [
+  { hostname: 'share.gemini.google', pathRegex: /^\/[a-zA-Z0-9_-]+$/, platform: 'gemini' }
+];
+
+const SHORT_LINK_TIMEOUT_MS = 8_000;
+
+/**
+ * Reads the redirect target of a short link without following it.
+ * @returns {Promise<{ ok: true, location: string } | { ok: false, error: string }>}
+ */
+async function resolveRedirectShortLink(url, { skipDns, lookupImpl, fetchImpl = fetch }) {
+  if (!skipDns) {
+    const dns = await checkHostResolvesPublic(url.hostname, lookupImpl);
+    if (!dns.ok) return { ok: false, error: dns.error };
+  }
+  let response;
+  try {
+    response = await fetchImpl(url.href, {
+      method: 'GET',
+      redirect: 'manual',
+      signal: AbortSignal.timeout(SHORT_LINK_TIMEOUT_MS),
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChatPDFStudio link resolver)' }
+    });
+  } catch {
+    return { ok: false, error: `Could not reach ${url.hostname} to resolve the short link. Please retry.` };
+  }
+  await response.body?.cancel?.().catch(() => {});
+
+  const location = response.headers.get('location');
+  if (response.status >= 300 && response.status < 400 && location) {
+    return { ok: true, location: new URL(location, url).href };
+  }
+  return { ok: false, error: 'This short link does not point to a shared conversation. It may have been deleted or mistyped.' };
+}
+
+/**
  * Checks if an IPv4 address is in a private, loopback, or reserved range (SSRF guard).
  * @param {string} ip
  * @returns {boolean}
@@ -179,6 +223,7 @@ export async function checkHostResolvesPublic(hostname, lookupImpl = lookup) {
  * @param {object} [options]
  * @param {boolean} [options.skipDns=false] - For offline testing
  * @param {Function} [options.lookupImpl]   - Injectable DNS lookup for tests
+ * @param {Function} [options.fetchImpl]    - Injectable fetch for resolving short links (tests)
  * @returns {Promise<{ isValid: boolean, error?: string, platform?: string, platformName?: string, shareId?: string, parsedUrl?: URL, canonicalUrl?: string }>}
  */
 export async function validateConversationUrl(urlString, options = {}) {
@@ -244,6 +289,25 @@ export async function validateConversationUrl(urlString, options = {}) {
     return validateConversationUrl(alias.toCanonical(m[1]), options);
   }
 
+  // 3b. Short links that need one (non-followed) request to resolve
+  const redirectAlias = REDIRECT_SHORT_LINKS.find((a) => a.hostname === hostname);
+  if (redirectAlias) {
+    if (!redirectAlias.pathRegex.test(parsed.pathname.replace(/\/$/, ''))) {
+      return { isValid: false, error: `Invalid short-link path "${parsed.pathname}" for ${hostname}.` };
+    }
+    if (options._resolvingShortLink) {
+      return { isValid: false, error: 'Short link redirects to another short link.' };
+    }
+    const resolved = await resolveRedirectShortLink(new URL(`https://${hostname}${parsed.pathname}`), options);
+    if (!resolved.ok) return { isValid: false, error: resolved.error };
+
+    const target = await validateConversationUrl(resolved.location, { ...options, _resolvingShortLink: true });
+    if (!target.isValid || target.platform !== redirectAlias.platform) {
+      return { isValid: false, error: `The short link redirected somewhere unexpected and was rejected.` };
+    }
+    return { ...target, shortLink: `https://${hostname}${parsed.pathname}` };
+  }
+
   // 4. Match against allowed platforms
   let matchedPlatform = null;
   let matchedConfig = null;
@@ -259,7 +323,7 @@ export async function validateConversationUrl(urlString, options = {}) {
   if (!matchedPlatform) {
     return {
       isValid: false,
-      error: `Unsupported hostname "${hostname}". Supported platforms: ChatGPT (chatgpt.com), Google Gemini (gemini.google.com, g.co/gemini/share), and Claude (claude.ai).`
+      error: `Unsupported hostname "${hostname}". Supported platforms: ChatGPT (chatgpt.com), Google Gemini (gemini.google.com, g.co/gemini/share, share.gemini.google), and Claude (claude.ai).`
     };
   }
 

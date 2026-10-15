@@ -28,6 +28,7 @@ export const ERROR_CODES = {
   BUSY: { status: 503, retryable: true },                 // conversion capacity exhausted
   RATE_LIMITED: { status: 429, retryable: true },
   PDF_FAILED: { status: 500, retryable: true },
+  CANCELLED: { status: 499, retryable: true },            // client went away / cancelled
   INTERNAL: { status: 500, retryable: true }
 };
 
@@ -76,6 +77,9 @@ export function normalizeUpstreamError(err, platformName = 'the platform') {
   if (err instanceof AppError) return err;
 
   const message = String(err?.message || err);
+  if (err?.name === 'AbortError' && /cancel/i.test(message)) {
+    return new AppError('CANCELLED', 'The conversion was cancelled.');
+  }
   if (err?.name === 'TimeoutError' || err?.name === 'AbortError' || /timeout/i.test(message)) {
     return new AppError('TIMEOUT', `Timed out while retrieving the conversation from ${platformName}. Please retry.`);
   }

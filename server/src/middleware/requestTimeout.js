@@ -2,8 +2,9 @@
  * requestTimeout.js
  *
  * Guarantees the client receives a structured 504 if a request runs longer
- * than `ms`. Work already in progress (e.g. a browser job) is bounded by its
- * own timeouts in browser.service.js and is cleaned up there.
+ * than `ms`. Controllers can register `res.locals.onTimeout` to stop their
+ * work (and, for streaming responses whose headers are already sent, to emit
+ * the timeout as a stream event).
  */
 
 import { AppError, toErrorBody } from '../utils/errors.js';
@@ -16,6 +17,7 @@ export function requestTimeout(ms) {
         const err = new AppError('TIMEOUT', `The request took longer than ${Math.round(ms / 1000)} s and was stopped. Please retry.`);
         res.status(err.statusCode).json(toErrorBody(err));
       }
+      if (typeof res.locals.onTimeout === 'function') res.locals.onTimeout();
     }, ms);
     timer.unref?.();
 

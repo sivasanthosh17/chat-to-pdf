@@ -32,7 +32,7 @@ export const GRADE_OUTCOMES = {
 };
 
 const ERROR_OUTCOMES = {
-  UNSUPPORTED_URL: { tone: 'error', title: 'Unsupported link', hint: 'Paste a public share link: chatgpt.com/share/…, gemini.google.com/share/… (or g.co/gemini/share/…), or claude.ai/share/….' },
+  UNSUPPORTED_URL: { tone: 'error', title: 'Unsupported link', hint: 'Paste a public share link: chatgpt.com/share/…, gemini.google.com/share/… (or share.gemini.google/… · g.co/gemini/share/…), or claude.ai/share/….' },
   INVALID_REQUEST: { tone: 'error', title: 'Unsupported link', hint: 'Paste a full https:// share link.' },
   PLATFORM_MISMATCH: { tone: 'error', title: 'Platform does not match the link', hint: 'Choose “Auto-detect” or the platform the link belongs to.' },
   NOT_FOUND: { tone: 'error', title: 'Private or inaccessible conversation', hint: 'Check that the link is complete and that the conversation is still shared publicly. Private chats cannot be converted.' },

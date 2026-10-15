@@ -25,7 +25,7 @@
  */
 
 import { retrieveAndVerify } from '../services/conversion.service.js';
-import { AppError } from '../utils/errors.js';
+import { AppError, toErrorBody } from '../utils/errors.js';
 
 const MAX_REPORT_HEADER_CHARS = 6000;
 
@@ -63,37 +63,61 @@ export function safeFilename(platform, title) {
 }
 
 /**
+ * An AbortSignal that fires when the client disconnects before the response
+ * is complete, so abandoned conversions release their browser immediately.
+ */
+function abortOnDisconnect(res) {
+  const controller = new AbortController();
+  res.on('close', () => {
+    if (!res.writableEnded) controller.abort(new DOMException('Client cancelled the request', 'AbortError'));
+  });
+  return controller;
+}
+
+/**
+ * Shared steps after extraction: enforce the verification policy, render,
+ * log metadata. Returns everything a response needs.
+ */
+async function verifyAndRender(req, { validation, conversation, report }, { onStage, signal }) {
+  const started = Date.now();
+  if (!report.passed) {
+    throw new AppError(
+      'VERIFICATION_FAILED',
+      'Verification failed — PDF generation was blocked so that an incomplete or altered conversation is not presented as complete.',
+      { grade: report.grade, verificationErrors: report.errors, verificationWarnings: report.warnings }
+    );
+  }
+
+  let pdf;
+  try {
+    pdf = await req.app.locals.renderPdf(conversation, report, { onStage, signal });
+  } catch (pdfErr) {
+    if (pdfErr instanceof AppError) throw pdfErr;
+    throw new AppError('PDF_FAILED', 'PDF generation failed. Please retry.');
+  }
+
+  const finalReport = pdf.report || report;
+
+  // Metadata only — never conversation content
+  console.log(
+    `[convert] platform=${validation.platform} messages=${conversation.messages.length} grade=${finalReport.grade} ` +
+      `pdfCheck=${pdf.regressionCheck.passed ? 'passed' : 'failed'} pages=${pdf.pageCount ?? '?'} renderMs=${Date.now() - started}`
+  );
+
+  return { pdf, finalReport };
+}
+
+/**
  * POST /api/convert
  * Body: { url: string, platform?: 'auto'|'chatgpt'|'gemini'|'claude' }
  */
 export async function convertToPdf(req, res, next) {
-  const started = Date.now();
+  const abort = abortOnDisconnect(res);
+  res.locals.onTimeout = () => abort.abort(new DOMException('Request timed out', 'AbortError'));
   try {
-    const { validation, conversation, report } = await retrieveAndVerify(req.body, req.app.locals);
-
-    if (!report.passed) {
-      throw new AppError(
-        'VERIFICATION_FAILED',
-        'Verification failed — PDF generation was blocked so that an incomplete or altered conversation is not presented as complete.',
-        { grade: report.grade, verificationErrors: report.errors, verificationWarnings: report.warnings }
-      );
-    }
-
-    let pdf;
-    try {
-      pdf = await req.app.locals.renderPdf(conversation, report);
-    } catch (pdfErr) {
-      if (pdfErr instanceof AppError) throw pdfErr;
-      throw new AppError('PDF_FAILED', 'PDF generation failed. Please retry.');
-    }
-
-    const finalReport = pdf.report || report;
-
-    // Metadata only — never conversation content
-    console.log(
-      `[convert] platform=${validation.platform} messages=${conversation.messages.length} grade=${finalReport.grade} ` +
-        `pdfCheck=${pdf.regressionCheck.passed ? 'passed' : 'failed'} pages=${pdf.pageCount ?? '?'} ms=${Date.now() - started}`
-    );
+    const retrieved = await retrieveAndVerify(req.body, req.app.locals, { signal: abort.signal });
+    const { validation, conversation } = retrieved;
+    const { pdf, finalReport } = await verifyAndRender(req, retrieved, { signal: abort.signal });
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${safeFilename(validation.platform, conversation.title)}"`);
@@ -112,7 +136,95 @@ export async function convertToPdf(req, res, next) {
 
     return res.status(200).send(pdf.buffer);
   } catch (err) {
+    if (abort.signal.aborted) return undefined; // client is gone; nothing to send
     next(err);
+  }
+}
+
+const HEARTBEAT_MS = 15_000;
+
+/**
+ * POST /api/convert/stream
+ * Body: same as /api/convert
+ *
+ * Streams newline-delimited JSON so the UI can show which step is really
+ * running:
+ *   {"type":"stage","stage":"validating"}
+ *   {"type":"stage","stage":"retrieving","platform":"gemini"}
+ *   {"type":"stage","stage":"verifying","messageCount":40}
+ *   {"type":"stage","stage":"rendering"}
+ *   {"type":"stage","stage":"checking"}
+ *   {"type":"ping"}                                   (every 15 s, keeps proxies from closing the connection)
+ *   {"type":"result","meta":{…},"pdf":"<base64>"}    or
+ *   {"type":"error","error":{code,message,statusCode,retryable,details?}}
+ *
+ * Errors raised before the first event (bad JSON, rate limit) are ordinary
+ * JSON error responses with their HTTP status.
+ */
+export async function convertToPdfStream(req, res, next) {
+  const abort = abortOnDisconnect(res);
+  let streaming = false;
+
+  const send = (event) => {
+    if (res.writableEnded || res.destroyed) return;
+    if (!streaming) {
+      streaming = true;
+      res.status(200);
+      res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+      res.setHeader('X-Accel-Buffering', 'no'); // disable nginx response buffering
+      res.flushHeaders();
+    }
+    res.write(`${JSON.stringify(event)}\n`);
+  };
+
+  const fail = (err) => {
+    if (abort.signal.aborted && err?.code !== 'TIMEOUT') return;
+    if (!streaming) {
+      next(err);
+      return;
+    }
+    send({ type: 'error', error: toErrorBody(err).error });
+    res.end();
+  };
+
+  // The request-timeout middleware cannot send a 504 once streaming has
+  // started; it calls this instead.
+  res.locals.onTimeout = () => {
+    fail(new AppError('TIMEOUT', 'The conversion took too long and was stopped. Please retry.'));
+    abort.abort(new DOMException('Request timed out', 'AbortError'));
+  };
+
+  const heartbeat = setInterval(() => streaming && send({ type: 'ping' }), HEARTBEAT_MS);
+  try {
+    // `at` is the server time the step started, so step durations are exact even when
+    // several events arrive in one network chunk
+    const onStage = (stage, info = {}) => send({ type: 'stage', stage, at: Date.now(), ...info });
+    const retrieved = await retrieveAndVerify(req.body, req.app.locals, { onStage, signal: abort.signal });
+    const { pdf, finalReport } = await verifyAndRender(req, retrieved, { onStage, signal: abort.signal });
+    const { validation, conversation } = retrieved;
+
+    send({
+      type: 'result',
+      meta: {
+        filename: safeFilename(validation.platform, conversation.title),
+        title: conversation.title,
+        platform: validation.platform,
+        grade: finalReport.grade,
+        method: conversation.verification.verificationMethod,
+        warnings: finalReport.warnings,
+        notes: finalReport.notes,
+        regressionCheck: pdf.regressionCheck.passed ? 'passed' : 'failed',
+        messageCount: conversation.messages.length,
+        pageCount: pdf.pageCount ?? 0
+      },
+      pdf: Buffer.from(pdf.buffer).toString('base64')
+    });
+    res.end();
+  } catch (err) {
+    fail(err instanceof AppError ? err : new AppError('INTERNAL', 'An unexpected server error occurred. Please retry.'));
+  } finally {
+    clearInterval(heartbeat);
   }
 }
 

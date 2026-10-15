@@ -55,6 +55,17 @@ function isMathElement($, node) {
 }
 
 /**
+ * True when an inline-looking element wraps a content image (e.g. Gemini's
+ * <a class="image-source-link"><img></a>). Such elements are walked as
+ * containers so the image gets its own "omitted" block where it occurred.
+ * Images drawn inside math (KaTeX uses SVG <img> for radicals) don't count.
+ */
+function containsContentImage($, node) {
+  if (!isElement(node) || isMathElement($, node)) return false;
+  return $(node).find('img').toArray().some((img) => $(img).closest(MATH_SELECTOR).length === 0);
+}
+
+/**
  * Returns the LaTeX source for a math element, or its visible text when no
  * source is available.
  */
@@ -267,11 +278,12 @@ function handleBlock($, node, blocks, ctx) {
     case 'pre': {
       const $pre = $(node);
       const $code = $pre.find('code').first();
-      const langSource = `${$code.attr('class') || ''} ${$pre.attr('class') || ''} ${$pre.attr('data-language') || ''}`;
-      const langMatch = langSource.match(/(?:language-|lang-)([\w+#.-]+)/) || langSource.match(/^\s*([\w+#.-]+)\s*$/);
+      const explicit = ($pre.attr('data-language') || $code.attr('data-language') || '').trim();
+      const classes = `${$code.attr('class') || ''} ${$pre.attr('class') || ''}`;
+      const langMatch = classes.match(/(?:language-|lang-)([\w+#.-]+)/);
       blocks.push({
         type: 'code',
-        language: langMatch ? langMatch[1] : 'text',
+        language: explicit ? explicit.toLowerCase() : langMatch ? langMatch[1] : 'text',
         code: ($code.length ? $code : $pre).text() // verbatim, including indentation
       });
       ctx.hasCode = true;
@@ -320,7 +332,7 @@ function walkNodes($, nodes, blocks, ctx) {
       continue;
     }
 
-    if (isBlockElement(node) || (isMathElement($, node) && isDisplayMath($, node))) {
+    if (isBlockElement(node) || (isMathElement($, node) && isDisplayMath($, node)) || containsContentImage($, node)) {
       flush();
       handleBlock($, node, blocks, ctx);
     } else {

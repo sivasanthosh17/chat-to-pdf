@@ -461,6 +461,7 @@ async function fetchSharePayload(validation, options) {
   const response = await safeFetch(`https://chatgpt.com/backend-api/share/${encodeURIComponent(validation.shareId)}`, {
     allowedHosts: PLATFORM.fetchHosts,
     headers: { Accept: 'application/json', 'Accept-Language': 'en-US,en;q=0.9', Referer: 'https://chatgpt.com/' },
+    signal: options.signal,
     ...options.fetchOptions
   });
 
@@ -497,7 +498,7 @@ async function fetchSharePayload(validation, options) {
  * Tier 2: rendered page DOM inside a network-restricted browser.
  * @returns {Promise<object>} NormalizedConversation
  */
-async function renderSharePage(validation) {
+async function renderSharePage(validation, signal) {
   const html = await withBrowserPage(async (page) => {
     const response = await page.goto(validation.canonicalUrl, { waitUntil: 'domcontentloaded' });
     if (response?.status() === 404) {
@@ -512,7 +513,7 @@ async function renderSharePage(validation) {
     });
     await page.waitForTimeout(1000);
     return page.content();
-  }, { hostSuffixes: PLATFORM.browserHostSuffixes, timeoutMs: 60_000 });
+  }, { hostSuffixes: PLATFORM.browserHostSuffixes, timeoutMs: 60_000, signal });
 
   return parseChatGptHtml(html, validation.canonicalUrl);
 }
@@ -524,21 +525,22 @@ async function renderSharePage(validation) {
  * @param {object} [options]
  * @param {object} [options.fetchOptions] - passed to safeFetch (tests)
  * @param {boolean} [options.allowBrowserFallback=true]
+ * @param {AbortSignal} [options.signal]
  * @returns {Promise<object>} Validated NormalizedConversation
  */
 export async function extractChatGptConversation(validation, options = {}) {
-  const { allowBrowserFallback = true } = options;
+  const { allowBrowserFallback = true, signal } = options;
 
   try {
     return await fetchSharePayload(validation, options);
   } catch (err) {
     const tierOneError = normalizeUpstreamError(err, 'ChatGPT');
-    // Definitive answers from the platform are not retried another way
-    if (['NOT_FOUND', 'ACCESS_BLOCKED', 'RESPONSE_TOO_LARGE'].includes(tierOneError.code) || !allowBrowserFallback) {
+    // Definitive answers from the platform (and cancellation) are not retried another way
+    if (['NOT_FOUND', 'ACCESS_BLOCKED', 'RESPONSE_TOO_LARGE', 'CANCELLED'].includes(tierOneError.code) || !allowBrowserFallback) {
       throw tierOneError;
     }
     try {
-      return await renderSharePage(validation);
+      return await renderSharePage(validation, signal);
     } catch (domErr) {
       const tierTwoError = normalizeUpstreamError(domErr, 'ChatGPT');
       throw tierTwoError.code === 'UNRECOGNIZED_FORMAT' ? tierOneError : tierTwoError;
