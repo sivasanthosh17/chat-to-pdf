@@ -11,6 +11,7 @@ import { logConversion } from './convert.controller.js';
  */
 export async function extractConversation(req, res, next) {
   const started = Date.now();
+  let platform = null;
   const abort = new AbortController();
   res.on('close', () => {
     if (!res.writableEnded) abort.abort(new DOMException('Client cancelled the request', 'AbortError'));
@@ -18,7 +19,12 @@ export async function extractConversation(req, res, next) {
   res.locals.onTimeout = () => abort.abort(new DOMException('Request timed out', 'AbortError'));
 
   try {
-    const { validation, conversation, report } = await retrieveAndVerify(req.body, req.app.locals, { signal: abort.signal });
+    const { validation, conversation, report } = await retrieveAndVerify(req.body, req.app.locals, {
+      signal: abort.signal,
+      onStage: (stage, info) => {
+        if (info?.platform) platform = info.platform;
+      }
+    });
     logConversion(req, 'preview', started, {
       platform: validation.platform,
       ok: report.passed,
@@ -38,7 +44,7 @@ export async function extractConversation(req, res, next) {
       }
     });
   } catch (err) {
-    logConversion(req, 'preview', started, { ok: false, outcome: abort.signal.aborted ? 'CANCELLED' : err.code || 'INTERNAL' });
+    logConversion(req, 'preview', started, { platform, ok: false, outcome: abort.signal.aborted ? 'CANCELLED' : err.code || 'INTERNAL' });
     if (abort.signal.aborted) return undefined; // client is gone or a 504 was already sent
     next(err);
   }

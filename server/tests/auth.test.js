@@ -130,17 +130,20 @@ test('login: same answer for unknown email and wrong password; logout ends the s
   });
 });
 
-test('converting requires login; users can convert', async () => {
+test('converting and previewing require login; checking a link does not; users can convert', async () => {
   const { app, db } = setup();
   await createUser(db, { email: 'u@example.com', password: PASSWORD });
   await withServer(app, async (base) => {
     const anon = client(base);
-    for (const path of ['/api/convert', '/api/convert/stream', '/api/extract', '/api/validate-url']) {
+    for (const path of ['/api/convert', '/api/convert/stream', '/api/extract']) {
       const res = await anon.post(path, { url: URL });
       assert.equal(res.status, 401, path);
       assert.equal(res.json.error.code, 'UNAUTHENTICATED');
     }
-    // Public endpoints stay public
+    // Public endpoints stay public — visitors can paste and check a link first
+    const check = await anon.post('/api/validate-url', { url: URL });
+    assert.equal(check.status, 200);
+    assert.equal(check.json.data.platform, 'chatgpt');
     assert.equal((await anon.get('/api/health')).status, 200);
     assert.equal((await anon.get('/api/platforms')).status, 200);
 

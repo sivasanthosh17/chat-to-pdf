@@ -7,6 +7,8 @@
  *   sessions  — login sessions (only a SHA-256 hash of each token is stored)
  *   usage     — one row per conversion: who, when, platform, outcome, counts.
  *               Share links and conversation text are NEVER stored.
+ *   settings  — admin settings (e.g. the platform health-check test links)
+ *   health_checks — results of the platform health check
  *
  * Schema changes are applied as numbered migrations on startup.
  */
@@ -49,6 +51,31 @@ const MIGRATIONS = [
   );
   CREATE INDEX usage_by_time ON usage(created_at);
   CREATE INDEX usage_by_user ON usage(user_id);
+  `,
+  // 2 — activity, quotas, settings, platform health
+  `
+  ALTER TABLE sessions ADD COLUMN last_seen_at INTEGER;     -- "online now"
+  ALTER TABLE users ADD COLUMN daily_pdf_limit INTEGER;     -- NULL = site default
+  ALTER TABLE users ADD COLUMN unlimited INTEGER NOT NULL DEFAULT 0;
+
+  CREATE TABLE settings (
+    key    TEXT PRIMARY KEY,
+    value  TEXT NOT NULL
+  );
+
+  -- Results of the admin platform health check (test links are kept in settings)
+  CREATE TABLE health_checks (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    platform       TEXT    NOT NULL,
+    ok             INTEGER NOT NULL,
+    outcome        TEXT    NOT NULL,   -- grade or error code
+    message        TEXT,
+    message_count  INTEGER,
+    duration_ms    INTEGER,
+    run_by         TEXT    NOT NULL CHECK (run_by IN ('manual', 'scheduled')),
+    created_at     INTEGER NOT NULL
+  );
+  CREATE INDEX health_by_platform ON health_checks(platform, created_at);
   `
 ];
 

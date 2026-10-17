@@ -43,6 +43,19 @@ export function getSessionUser(db, token) {
   return row ?? null;
 }
 
+const TOUCH_INTERVAL_MS = 60_000;
+export const ONLINE_WINDOW_MS = 5 * 60_000;
+
+/**
+ * Records that a session was just used (for "online now" / last active).
+ * Writes at most once a minute per session.
+ */
+export function touchSession(db, token) {
+  const now = Date.now();
+  db.prepare('UPDATE sessions SET last_seen_at = ? WHERE token_hash = ? AND (last_seen_at IS NULL OR last_seen_at < ?)')
+    .run(now, hashToken(token), now - TOUCH_INTERVAL_MS);
+}
+
 export function deleteSession(db, token) {
   if (typeof token === 'string') db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(hashToken(token));
 }

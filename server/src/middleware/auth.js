@@ -11,7 +11,7 @@
  */
 
 import { AppError } from '../utils/errors.js';
-import { getSessionUser, sessionTtlMs } from '../services/session.service.js';
+import { getSessionUser, sessionTtlMs, touchSession } from '../services/session.service.js';
 import { toPublicUser } from '../services/users.service.js';
 
 export const SESSION_COOKIE = 'chatpdf_sid';
@@ -49,6 +49,7 @@ export function loadUser(req, res, next) {
   const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
   req.sessionToken = token || null;
   req.user = token ? toPublicUser(getSessionUser(req.app.locals.db, token)) : null;
+  if (req.user) touchSession(req.app.locals.db, token); // "online now" / last active
   next();
 }
 

@@ -6,17 +6,34 @@ import { ResultPanel } from '../components/ResultPanel';
 import { ErrorPanel } from '../components/ErrorPanel';
 import { ConversationViewer } from '../components/ConversationViewer';
 import { RecentConversions } from '../components/RecentConversions';
-import { AuthCard } from '../components/AuthCard';
+import { Icon } from '../components/Icon';
 import { HowItWorks, PlatformSupport, Limitations } from '../components/InfoSections';
 import { useConversion } from '../hooks/useConversion';
 import { downloadResult } from '../services/download';
 import { loadDownloadPrefs } from '../services/preferences';
+import { localTime } from '../services/outcomes';
+
+/** "27 of 30 PDFs left today" for accounts with a daily limit (nothing for unlimited ones). */
+function QuotaNote({ quota }) {
+  if (!quota || quota.unlimited) return null;
+  const out = quota.remaining <= 0;
+  return (
+    <p className={`guest-note quota-note ${out ? 'is-out' : ''}`} role="status">
+      <Icon name="clock" size={14} />
+      {out
+        ? `You have made today's ${quota.limit} PDF${quota.limit === 1 ? '' : 's'}. Previews still work; new PDFs from ${localTime(quota.resetsAt)}.`
+        : `${quota.remaining} of ${quota.limit} PDF${quota.limit === 1 ? '' : 's'} left today · resets at ${localTime(quota.resetsAt)}`}
+    </p>
+  );
+}
 
 /**
- * Converter for logged-in users. App keys this component by user id, so the
- * in-tab history (and its PDFs) is discarded on logout or account switch.
+ * The converter. Visitors can paste and check a link; Convert and Preview go
+ * through `requireLogin`, which asks them to log in first and then continues.
+ * App re-keys this component when the account changes, so the in-tab history
+ * (and its PDFs) never carries over to another person.
  */
-function Converter({ onSessionExpired }) {
+function Converter({ guest, quota, requireLogin, onSessionExpired, onQuotaChange }) {
   const { state, elapsed, history, convert, cancel, retry, reset, show, clearHistory } = useConversion();
   const [url, setUrl] = useState('');
   const [platform, setPlatform] = useState('auto');
@@ -40,10 +57,24 @@ function Converter({ onSessionExpired }) {
     }
   }, [state]);
 
-  // The session ended (expired, logged out elsewhere, account disabled)
+  // The session ended (expired, logged out elsewhere, account disabled):
+  // ask to log in again, then retry what failed. Handled once per attempt.
+  const handledExpiryRef = useRef(null);
   useEffect(() => {
-    if (state.status === 'error' && state.error?.code === 'UNAUTHENTICATED') onSessionExpired();
-  }, [state, onSessionExpired]);
+    if (state.status !== 'error' || state.error?.code !== 'UNAUTHENTICATED') return;
+    if (handledExpiryRef.current === state.id) return;
+    handledExpiryRef.current = state.id;
+    onSessionExpired(retry);
+  }, [state, onSessionExpired, retry]);
+
+  // A finished PDF attempt changes "PDFs left today": fetch the new count once
+  const quotaSyncedRef = useRef(null);
+  useEffect(() => {
+    if ((state.status !== 'success' && state.status !== 'error') || state.mode !== 'pdf' || state.fromHistory) return;
+    if (quotaSyncedRef.current === state.id) return;
+    quotaSyncedRef.current = state.id;
+    onQuotaChange();
+  }, [state, onQuotaChange]);
 
   const rebuild = (options) =>
     convert({ mode: 'pdf', url: state.url, platform: state.platform, options, autoDownload: true });
@@ -64,10 +95,20 @@ function Converter({ onSessionExpired }) {
           onPlatformChange={setPlatform}
           busy={busy}
           onSubmit={(request) =>
-            // The first PDF already follows the remembered download preference
-            convert(request.mode === 'pdf' ? { ...request, options: loadDownloadPrefs() } : request)
+            requireLogin(
+              // The first PDF already follows the remembered download preference
+              () => convert(request.mode === 'pdf' ? { ...request, options: loadDownloadPrefs() } : request),
+              request.mode === 'pdf' ? 'to convert and download PDFs' : 'to preview conversations'
+            )
           }
         />
+        {guest ? (
+          <p className="guest-note">
+            <Icon name="lock" size={14} /> A free account is needed to convert or preview — you'll be asked when you click.
+          </p>
+        ) : (
+          <QuotaNote quota={quota} />
+        )}
       </section>
 
       {state.status === 'running' && (
@@ -106,16 +147,19 @@ function Converter({ onSessionExpired }) {
   );
 }
 
-export function HomePage({ auth }) {
+export function HomePage({ auth, converterKey, requireLogin, onSessionExpired }) {
   return (
     <>
       <Hero />
 
-      {auth.status === 'authenticated' && <Converter key={auth.user.id} onSessionExpired={auth.refresh} />}
-      {(auth.status === 'anonymous' || auth.status === 'offline') && (
-        <AuthCard signupAllowed={auth.signupAllowed} onLogin={auth.login} onSignup={auth.signup} />
-      )}
-      {auth.status === 'loading' && <section className="card converter-card auth-loading" aria-busy="true" />}
+      <Converter
+        key={converterKey}
+        guest={auth.status !== 'authenticated'}
+        quota={auth.quota}
+        requireLogin={requireLogin}
+        onSessionExpired={onSessionExpired}
+        onQuotaChange={auth.refresh}
+      />
 
       <HowItWorks />
       <PlatformSupport />

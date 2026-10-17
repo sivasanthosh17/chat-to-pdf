@@ -3,6 +3,7 @@ import { CredentialsSchema, SignupSchema, ChangePasswordSchema, parseOrThrow } f
 import { authenticate, createUser, changePassword, toPublicUser } from '../services/users.service.js';
 import { createSession, deleteSession, hashToken } from '../services/session.service.js';
 import { setSessionCookie, clearSessionCookie } from '../middleware/auth.js';
+import { quotaFor } from '../services/quota.service.js';
 
 function startSession(req, res, user) {
   // A fresh token on every login (no session fixation)
@@ -15,10 +16,13 @@ export function signupAllowed() {
   return process.env.ALLOW_SIGNUP !== 'false';
 }
 
-/** GET /api/auth/me */
+/** GET /api/auth/me — current user, their daily PDF allowance, and whether sign-up is open */
 export function me(req, res) {
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ success: true, data: { user: req.user, signupAllowed: signupAllowed() } });
+  res.json({
+    success: true,
+    data: { user: req.user, quota: quotaFor(req.app.locals.db, req.user), signupAllowed: signupAllowed() }
+  });
 }
 
 /** POST /api/auth/login { email, password } */
@@ -28,7 +32,7 @@ export async function login(req, res, next) {
     const user = await authenticate(req.app.locals.db, email, password);
     if (!user) throw new AppError('UNAUTHENTICATED', 'Wrong email or password.');
     startSession(req, res, user);
-    res.json({ success: true, data: { user: toPublicUser(user) } });
+    res.json({ success: true, data: { user: toPublicUser(user), quota: quotaFor(req.app.locals.db, user) } });
   } catch (err) {
     next(err);
   }
@@ -41,7 +45,7 @@ export async function signup(req, res, next) {
     const { email, password } = parseOrThrow(SignupSchema, req.body, AppError);
     const user = await createUser(req.app.locals.db, { email, password, role: 'user' });
     startSession(req, res, user);
-    res.status(201).json({ success: true, data: { user: toPublicUser(user) } });
+    res.status(201).json({ success: true, data: { user: toPublicUser(user), quota: quotaFor(req.app.locals.db, user) } });
   } catch (err) {
     next(err);
   }

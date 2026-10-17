@@ -30,6 +30,7 @@ export const ERROR_CODES = {
   RESPONSE_TOO_LARGE: { status: 502, retryable: false },
   BUSY: { status: 503, retryable: true },                 // conversion capacity exhausted
   RATE_LIMITED: { status: 429, retryable: true },
+  QUOTA_EXCEEDED: { status: 429, retryable: false },     // daily PDF allowance used up
   PDF_FAILED: { status: 500, retryable: true },
   CANCELLED: { status: 499, retryable: true },            // client went away / cancelled
   INTERNAL: { status: 500, retryable: true }

@@ -9,7 +9,7 @@ downloadable A4 PDFs. Message text is copied verbatim — never rewritten, summa
 | Frontend | React 19 + Vite, plain CSS (light/dark, mobile-first) |
 | Backend | Node.js 22 + Express 4 (ES modules), Zod |
 | Retrieval & PDF | Playwright + Chromium, Cheerio, PDF.js (`pdfjs-dist`) for the post-render text check |
-| Tests | Node's built-in test runner (`node:test`) — 151 tests, no network access needed |
+| Tests | Node's built-in test runner (`node:test`) — 156 tests, no network access needed |
 
 ---
 
@@ -38,7 +38,8 @@ Real-world testing was done in October 2026 against public share links found on 
 | **Gemini** (incl. `share.gemini.google/…` and `g.co/gemini/share/…` short links) | Public page rendered in a network-restricted headless browser; message DOM is read | **Unverified.** Gemini exposes no independent copy. Turn structure and text are cross-checked against the raw page text, and the PDF is labelled unverified | 3 public shares matched, including one with a code block, table, inline/display math and an image; deleted link → "not found" |
 | **Claude** | Public page rendered in a network-restricted browser; the page's own `chat_snapshots` response is read passively | **Unverified.** Order and completeness are confirmed through the `parent_message_uuid` chain, but the text exists in only one copy | 5 public shares matched; deleted share → "not found". Claude **intermittently shows a Cloudflare bot check** to automated browsers; the app does not bypass it and reports "Blocked by the platform" |
 
-Platforms change their pages without notice. `npm run check:live` (below) re-tests any link in seconds.
+Platforms change their pages without notice. `npm run check:live` (below) re-tests any link in seconds, and the
+admin dashboard's **Platform health** check does the same on a schedule.
 
 ---
 
@@ -99,7 +100,9 @@ npm install
 npm run dev                  # http://localhost:5173  (proxies /api → :5000)
 ```
 
-Open http://localhost:5173, log in, paste a public share link, and choose **Convert to PDF** or **Preview messages**.
+Open http://localhost:5173, paste a public share link, and choose **Convert to PDF** or **Preview**. Visitors can
+use the page and check links freely; clicking Convert or Preview asks them to log in or create an account, and the
+action continues automatically once they have.
 
 **First admin account.** Converting needs an account. Anyone can sign up as a *User* on the page (unless
 `ALLOW_SIGNUP=false`); the first *Admin* is created in one of two ways:
@@ -119,10 +122,13 @@ ADMIN_PASSWORD=<at least 10 characters>
 | | Visitor (not logged in) | User | Admin |
 |---|---|---|---|
 | Landing page, how it works, platforms | ✓ | ✓ | ✓ |
-| Convert, preview, download options | — | ✓ | ✓ (no conversion rate limit) |
+| Paste a link and see it checked (platform detection) | ✓ | ✓ | ✓ |
+| Convert, preview, download options | asked to log in / sign up, then continues | ✓ (up to the daily PDF limit) | ✓ (no rate or daily limit) |
+| See "PDFs left today" (converter and Account page) | — | ✓ | — |
 | Change own password | — | ✓ | ✓ |
-| Dashboard: conversions per day, by platform, outcomes, success rate | — | — | ✓ |
-| Manage accounts: create, make admin/user, disable/enable, delete | — | — | ✓ |
+| Dashboard: who is online, PDFs per account, conversions per day / platform / outcome | — | — | ✓ |
+| Manage accounts: create, make admin/user, disable/enable, delete, set a daily PDF limit | — | — | ✓ |
+| Recent failures, CSV exports, platform health check | — | — | ✓ |
 
 - The server enforces every rule (`401` when not logged in, `403` for a role that is not allowed); the UI
   only hides what you cannot use.
@@ -133,17 +139,39 @@ ADMIN_PASSWORD=<at least 10 characters>
 - An admin cannot demote, disable or delete themselves, and the last active admin can never be removed.
 - Login and sign-up are rate limited per IP; conversions are limited per account (admins exempt).
 - State-changing requests from other websites are rejected (Origin check), in addition to SameSite cookies.
-- **What is stored:** accounts, sessions, and one usage row per conversion (user, time, platform, outcome,
-  message and page counts, duration). **Share links and conversation text are never stored.** Data lives in
+- **Daily PDF limit:** each user may make `DAILY_PDF_LIMIT` PDFs a day (default 30; the day resets at 00:00
+  UTC). An admin can give an account its own limit or make it unlimited. Previews do not count, admins have
+  no limit, and a request over the limit gets `429 QUOTA_EXCEEDED`.
+- **What is stored:** accounts (including any custom daily limit), sessions with the time each was last used
+  (for "online now"), one usage row per conversion (user, time, platform, outcome, message and page counts,
+  duration), and the platform health-check results. **Share links and conversation text are never stored** —
+  the one exception is the health-check test links an admin saves on purpose (one per platform). Data lives in
   one SQLite file (`DB_PATH`, default `server/data/chatpdf.db`), using Node's built-in `node:sqlite` — no
   database server and no extra dependency. (It is marked experimental in Node 22; the npm scripts hide that
   warning.)
+
+### Admin dashboard
+
+An admin who logs in lands on the dashboard (`#/admin`); **Open converter** takes them to the converter, which
+they use like any user. The dashboard has four sections, each with its own address (`#/admin/accounts` …), and
+refreshes every minute:
+
+| Section | What it shows |
+|---|---|
+| **Overview** | Online now (active in the last 5 minutes), conversions, success rate, active users, pages, average time; conversions per day; top users by PDFs; conversions by platform; outcomes. **Usage log (CSV)** downloads one row per conversion. |
+| **Accounts** | Every account with online status or last activity, PDFs / previews / failed attempts in the period, all-time PDFs, and today's PDFs against its daily limit. **Details** opens the account's activity (per day, per platform, latest 25 attempts) and its daily PDF limit: site default, a custom number, or unlimited. **Accounts (CSV)** downloads the table. |
+| **Failures** | Failed conversions and previews grouped by problem and platform, with what each problem usually means, and the latest failures with the account. |
+| **Platform health** | Saved public test links (one per platform). A check reads each one exactly like a conversion (no PDF is made) and records whether it still works; it runs on demand and every `HEALTH_CHECK_INTERVAL_HOURS` (default 24). The last 10 results per platform are shown. |
+
+The period (7, 30 or 90 days) applies to the overview, accounts, failures and both CSV files. CSV files are
+UTF-8 with a byte-order mark (so Excel shows every character), and cells that a spreadsheet could run as a
+formula are neutralised.
 
 ### Tests
 
 ```bash
 cd server
-npm test                     # 151 tests, ~80 s; uses saved fixtures, never the network
+npm test                     # 156 tests, about a minute; uses saved fixtures, never the network
 ```
 
 Coverage includes: URL/SSRF validation (private ranges, DNS answers, redirects to other hosts, metadata
@@ -239,6 +267,8 @@ limiter is per process — use a shared limiter at the proxy if you run several 
 | `ALLOW_SIGNUP` | true | `false` = only admins create accounts |
 | `SESSION_TTL_DAYS` | 7 | How long a login lasts |
 | `RATE_LIMIT_LOGINS` | 10 | Login / sign-up attempts per IP per 15 minutes |
+| `DAILY_PDF_LIMIT` | 30 | PDFs per user per day (resets 00:00 UTC); `0` = no default limit. Admins can override it per account |
+| `HEALTH_CHECK_INTERVAL_HOURS` | 24 | How often the platform health check runs; `0` = only when an admin starts it |
 | `RATE_LIMIT_CONVERSIONS` / `RATE_LIMIT_WINDOW_MS` | 20 / 900000 | Extract + convert requests per account per window (admins exempt) |
 | `RATE_LIMIT_VALIDATIONS` | 120 | URL validations per account per minute |
 | `REQUEST_TIMEOUT_MS` | 180000 | Hard limit per conversion request |
@@ -262,20 +292,27 @@ All errors share one shape:
 |---|---|---|
 | `GET /api/health` | public | Status and current conversion capacity |
 | `GET /api/platforms` | public | Supported platforms, hosts and verification level |
-| `GET /api/auth/me` | public | Current user (or `null`) and whether sign-up is open |
+| `GET /api/auth/me` | public | Current user (or `null`), their daily PDF allowance (`quota`), and whether sign-up is open |
 | `POST /api/auth/signup` `{ email, password }` | public | Creates a **user** account and logs in |
 | `POST /api/auth/login` `{ email, password }` | public | Logs in (sets the session cookie) |
 | `POST /api/auth/logout` | public | Ends the session |
 | `POST /api/auth/password` `{ currentPassword, newPassword }` | user | Changes the password; signs out other devices |
-| `POST /api/validate-url` `{ url }` | user | SSRF-checked validation and platform detection |
+| `POST /api/validate-url` `{ url }` | public | SSRF-checked validation and platform detection (rate limited per IP) |
 | `POST /api/extract` `{ url, platform? }` | user | Normalized conversation + verification report (JSON) |
 | `POST /api/convert` `{ url, platform?, options? }` | user | The PDF (`application/pdf`) |
 | `POST /api/convert/stream` `{ url, platform?, options? }` | user | Same pipeline as NDJSON: `stage` events, then `result` (PDF as base64 + metadata) or `error` |
-| `GET /api/admin/stats?days=7` | admin | Totals, per day, per platform, per outcome |
-| `GET /api/admin/users` | admin | Accounts with conversion counts |
+| `GET /api/admin/stats?days=7` | admin | Totals, online now, top users, per day, per platform, per outcome |
+| `GET /api/admin/users?days=7` | admin | Accounts with PDFs / previews / failures in the period, all-time and today's PDFs, last activity, online now |
+| `GET /api/admin/users/:id/activity?days=30` | admin | One account: daily allowance, activity per day and platform, latest 25 attempts |
 | `POST /api/admin/users` `{ email, password, role }` | admin | Creates an account |
-| `PATCH /api/admin/users/:id` `{ role?, disabled? }` | admin | Changes role or enables/disables |
+| `PATCH /api/admin/users/:id` `{ role?, disabled?, dailyPdfLimit?, unlimited? }` | admin | Changes role, enables/disables, or sets the daily PDF limit (`dailyPdfLimit: null` = site default) |
 | `DELETE /api/admin/users/:id` | admin | Deletes an account (its usage rows stay, anonymised) |
+| `GET /api/admin/failures?days=7` | admin | Failed attempts grouped by problem and platform, plus the latest 50 |
+| `GET /api/admin/export/usage.csv?days=30` | admin | One CSV row per conversion (no links, no text) |
+| `GET /api/admin/export/users.csv?days=30` | admin | The accounts table as CSV |
+| `GET /api/admin/health` | admin | Test links, latest result and last 10 results per platform |
+| `PUT /api/admin/health/links` `{ chatgpt?, gemini?, claude? }` | admin | Saves test links (each must be a valid share link of its platform; `""` removes one) |
+| `POST /api/admin/health/run` | admin | Runs the check now, one platform at a time (`503 BUSY` while one is running) |
 
 `options.userMessageMaxLines` (1–500) shows only the first N lines of the user's own messages. It is applied after
 verification, never to AI replies; each cut is marked in place and listed under "Your download choice" on the
@@ -302,6 +339,7 @@ method, notes and warnings), `X-Verification-Warnings`, `X-Regression-Check` (`p
 | `NOT_FOUND` | 404 | Private, deleted or mistyped share |
 | `ACCESS_BLOCKED` | 403 | Platform bot check (never bypassed) |
 | `RATE_LIMITED` | 429 | Too many requests (`Retry-After` header) |
+| `QUOTA_EXCEEDED` | 429 | The account has made today's PDFs (`details.resetsAt`); previews still work |
 | `UPSTREAM_ERROR` / `UNRECOGNIZED_FORMAT` / `EXTRACTION_FAILED` / `RESPONSE_TOO_LARGE` | 502 | Platform error, page layout changed, or oversized response |
 | `BUSY` | 503 | Conversion capacity exhausted |
 | `TIMEOUT` | 504 | Platform or browser too slow |
@@ -334,7 +372,8 @@ method, notes and warnings), `X-Verification-Warnings`, `X-Regression-Check` (`p
   headers, generic messages for 5xx errors, and no conversation content or request bodies in logs.
 - **Storage:** conversations and PDFs are never written to disk — PDFs are streamed from memory with
   `Cache-Control: no-store`. The only stored data is the accounts database described under
-  [Accounts and roles](#accounts-and-roles) (no links, no conversation text).
+  [Accounts and roles](#accounts-and-roles) (no conversation text, and no links except the health-check test
+  links an admin saves).
 - **Access controls:** private conversations, logins, CAPTCHAs and bot checks are never bypassed. No stealth
   plugins are used.
 

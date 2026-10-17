@@ -124,9 +124,14 @@ export async function convertToPdf(req, res, next) {
   let platform = null;
   res.locals.onTimeout = () => abort.abort(new DOMException('Request timed out', 'AbortError'));
   try {
-    const retrieved = await retrieveAndVerify(req.body, req.app.locals, { signal: abort.signal });
+    const retrieved = await retrieveAndVerify(req.body, req.app.locals, {
+      signal: abort.signal,
+      // Known as soon as the link is checked, so failed attempts are logged with it
+      onStage: (stage, info) => {
+        if (info?.platform) platform = info.platform;
+      }
+    });
     const { validation, conversation } = retrieved;
-    platform = validation.platform;
     const { pdf, finalReport } = await verifyAndRender(req, retrieved, { signal: abort.signal });
     logConversion(req, 'pdf', started, {
       platform, ok: true, outcome: finalReport.grade, messageCount: conversation.messages.length, pageCount: pdf.pageCount

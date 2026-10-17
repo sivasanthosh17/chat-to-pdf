@@ -32,10 +32,19 @@ export const AdminCreateUserSchema = z.object({
 export const AdminUpdateUserSchema = z
   .object({
     role: z.enum(['user', 'admin']).optional(),
-    disabled: z.boolean().optional()
+    disabled: z.boolean().optional(),
+    // null = use the site default; a number = custom PDFs per day
+    dailyPdfLimit: z.number().int('Use a whole number.').min(0).max(10_000).nullable().optional(),
+    unlimited: z.boolean().optional()
   })
   .strict()
-  .refine((v) => v.role !== undefined || v.disabled !== undefined, 'Nothing to change.');
+  .refine((v) => Object.values(v).some((x) => x !== undefined), 'Nothing to change.');
+
+const shareLink = z.string().trim().max(2048).url('Enter a full https:// share link.').or(z.literal(''));
+
+export const HealthLinksSchema = z
+  .object({ chatgpt: shareLink.optional(), gemini: shareLink.optional(), claude: shareLink.optional() })
+  .strict();
 
 /** Parses `body` or throws a 400 with the first validation message. */
 export function parseOrThrow(schema, body, AppErrorClass) {

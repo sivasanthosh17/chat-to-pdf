@@ -81,7 +81,8 @@ export function useConversion() {
       : { status: 'error', id, mode, url, platform, options, error: result.error };
     setState(finished);
 
-    if (mode === 'pdf' && result.error?.code !== 'CANCELLED') {
+    // A cancelled or refused (daily limit reached) attempt is not a conversion worth listing
+    if (mode === 'pdf' && !['CANCELLED', 'QUOTA_EXCEEDED'].includes(result.error?.code)) {
       addToHistory({ ...finished, autoDownload: false, at: finishedAt });
     }
   }, [addToHistory]);

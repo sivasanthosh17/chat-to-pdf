@@ -23,7 +23,9 @@ export function toPublicUser(row) {
     role: row.role,
     disabled: Boolean(row.disabled),
     createdAt: row.created_at,
-    lastLoginAt: row.last_login_at ?? null
+    lastLoginAt: row.last_login_at ?? null,
+    dailyPdfLimit: row.daily_pdf_limit ?? null, // null = site default
+    unlimited: Boolean(row.unlimited)
   };
 }
 
@@ -83,18 +85,42 @@ export async function changePassword(db, userId, currentPassword, newPassword, k
 }
 
 /**
- * Users with their conversion counts, newest first.
+ * Accounts with their activity: PDFs, previews and failures in the last
+ * `days` days, all-time PDFs, today's PDFs (for the quota), last activity and
+ * whether they are online now. Most active first.
  */
-export function listUsers(db) {
+export function listUsers(db, { days = 7, onlineWindowMs = 5 * 60_000 } = {}) {
+  const now = Date.now();
+  const since = now - days * 24 * 60 * 60 * 1000;
+  const startOfDay = new Date(now).setUTCHours(0, 0, 0, 0);
   return db
     .prepare(`
-      SELECT u.*, COUNT(g.id) AS conversions, MAX(g.created_at) AS last_conversion_at
-      FROM users u LEFT JOIN usage g ON g.user_id = u.id
-      GROUP BY u.id
-      ORDER BY u.created_at DESC
+      SELECT u.*,
+        (SELECT COUNT(*) FROM usage g WHERE g.user_id = u.id AND g.kind = 'pdf' AND g.ok = 1 AND g.created_at >= @since) AS pdfs,
+        (SELECT COUNT(*) FROM usage g WHERE g.user_id = u.id AND g.kind = 'preview' AND g.ok = 1 AND g.created_at >= @since) AS previews,
+        (SELECT COUNT(*) FROM usage g WHERE g.user_id = u.id AND g.ok = 0 AND g.created_at >= @since) AS failed,
+        (SELECT COUNT(*) FROM usage g WHERE g.user_id = u.id AND g.kind = 'pdf' AND g.ok = 1) AS pdfs_total,
+        (SELECT COUNT(*) FROM usage g WHERE g.user_id = u.id AND g.kind = 'pdf' AND g.ok = 1 AND g.created_at >= @startOfDay) AS pdfs_today,
+        (SELECT MAX(g.created_at) FROM usage g WHERE g.user_id = u.id) AS last_conversion_at,
+        (SELECT MAX(s.last_seen_at) FROM sessions s WHERE s.user_id = u.id) AS last_seen_at
+      FROM users u
     `)
-    .all()
-    .map((row) => ({ ...toPublicUser(row), conversions: row.conversions, lastConversionAt: row.last_conversion_at ?? null }));
+    .all({ since, startOfDay })
+    .map((row) => {
+      const lastActiveAt = Math.max(row.last_seen_at ?? 0, row.last_conversion_at ?? 0, row.last_login_at ?? 0) || null;
+      return {
+        ...toPublicUser(row),
+        pdfs: row.pdfs,
+        previews: row.previews,
+        failed: row.failed,
+        pdfsTotal: row.pdfs_total,
+        pdfsToday: row.pdfs_today,
+        conversions: row.pdfs + row.previews + row.failed,
+        lastActiveAt,
+        onlineNow: Boolean(row.last_seen_at && row.last_seen_at >= now - onlineWindowMs)
+      };
+    })
+    .sort((a, b) => b.pdfs - a.pdfs || (b.lastActiveAt ?? 0) - (a.lastActiveAt ?? 0));
 }
 
 function assertCanChange(db, actor, target, { removesAdmin }) {
@@ -107,13 +133,16 @@ function assertCanChange(db, actor, target, { removesAdmin }) {
   }
 }
 
-export function updateUser(db, actor, targetId, { role, disabled }) {
+export function updateUser(db, actor, targetId, { role, disabled, dailyPdfLimit, unlimited }) {
   const target = findUserById(db, targetId);
   const demoting = role !== undefined && role !== 'admin' && target?.role === 'admin';
   const disabling = disabled === true && !target?.disabled;
   assertCanChange(db, actor, target, { removesAdmin: demoting || (disabling && target?.role === 'admin') || (disabling && target?.id === actor.id) });
 
   if (role !== undefined) db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, targetId);
+  // Quota: a number sets a custom daily limit, null returns to the site default
+  if (dailyPdfLimit !== undefined) db.prepare('UPDATE users SET daily_pdf_limit = ? WHERE id = ?').run(dailyPdfLimit, targetId);
+  if (unlimited !== undefined) db.prepare('UPDATE users SET unlimited = ? WHERE id = ?').run(unlimited ? 1 : 0, targetId);
   if (disabled !== undefined) {
     db.prepare('UPDATE users SET disabled = ? WHERE id = ?').run(disabled ? 1 : 0, targetId);
     if (disabled) deleteUserSessions(db, targetId); // signed out immediately

@@ -2,7 +2,7 @@ import React from 'react';
 import { describeError } from '../services/outcomes';
 import { Icon } from './Icon';
 
-const TONE_ICON = { temporary: 'refresh', neutral: 'info', error: 'alert' };
+const TONE_ICON = { temporary: 'refresh', neutral: 'info', error: 'alert', warning: 'clock' };
 
 /**
  * Explains why no PDF was produced, using the backend's error code to pick

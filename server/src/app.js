@@ -9,6 +9,7 @@ import { securityHeaders, frontendSecurityHeaders } from './middleware/securityH
 import { createRateLimiter } from './middleware/rateLimiter.js';
 import { requestTimeout } from './middleware/requestTimeout.js';
 import { loadUser, requireUser, checkOrigin } from './middleware/auth.js';
+import { enforceDailyQuota } from './services/quota.service.js';
 import { defaultExtractors } from './extractors/index.js';
 import { renderConversationToPdf } from './pdf/pdf.service.js';
 import { AppError, toErrorBody } from './utils/errors.js';
@@ -54,7 +55,7 @@ export function createApp(options = {}) {
   app.use(cors({
     origin: (origin, callback) => callback(null, !origin || allowedOrigins.includes(origin)),
     credentials: true, // the session cookie, for a frontend hosted on another allowed origin
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type'],
     exposedHeaders: [
       'Content-Disposition',
@@ -106,10 +107,13 @@ export function createApp(options = {}) {
   app.locals.rateLimiters = { conversionLimiter, validationLimiter, loginLimiter };
 
   const conversionTimeout = requestTimeout(num(process.env.REQUEST_TIMEOUT_MS, 180_000));
-  // Converting requires a logged-in account (any role)
-  app.use('/api/convert', requireUser, conversionLimiter, conversionTimeout);
+  // Converting and previewing require a logged-in account (any role).
+  // Checking a link is public, so visitors can paste one before logging in;
+  // it only validates the URL and is rate limited per IP.
+  // PDFs (not previews) also count against the account's daily allowance
+  app.use('/api/convert', requireUser, enforceDailyQuota, conversionLimiter, conversionTimeout);
   app.use('/api/extract', requireUser, conversionLimiter, conversionTimeout);
-  app.use('/api/validate-url', requireUser, validationLimiter, requestTimeout(15_000));
+  app.use('/api/validate-url', validationLimiter, requestTimeout(15_000));
   app.use(['/api/auth/login', '/api/auth/signup'], loginLimiter);
 
   // API Routes

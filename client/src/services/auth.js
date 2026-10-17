@@ -30,6 +30,40 @@ async function request(method, path, body) {
   }
 }
 
+/**
+ * Saves a file the server sends as an attachment (CSV exports). Fetched with
+ * the session cookie, so an ended session shows an error message instead of
+ * opening a JSON error page.
+ */
+async function downloadFile(path, fallbackName) {
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, { credentials: 'include' });
+    if (!response.ok) {
+      const json = await response.json().catch(() => null);
+      return {
+        ok: false,
+        error: { code: json?.error?.code || 'INTERNAL', message: json?.error?.message || `Download failed (HTTP ${response.status}).` }
+      };
+    }
+    const name = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') || '')?.[1] || fallbackName;
+    const url = URL.createObjectURL(await response.blob());
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = name;
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
+    anchor.click();
+    // Removing the link in the same tick can lose the file name (see download.js)
+    setTimeout(() => {
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    }, 1000);
+    return { ok: true, data: { name } };
+  } catch {
+    return { ok: false, error: { code: 'NETWORK', message: 'Could not reach the server.' } };
+  }
+}
+
 export const authApi = {
   me: () => request('GET', '/auth/me'),
   login: (email, password) => request('POST', '/auth/login', { email, password }),
@@ -40,8 +74,15 @@ export const authApi = {
 
 export const adminApi = {
   stats: (days = 7) => request('GET', `/admin/stats?days=${days}`),
-  users: () => request('GET', '/admin/users'),
+  users: (days = 7) => request('GET', `/admin/users?days=${days}`),
+  userActivity: (id, days = 30) => request('GET', `/admin/users/${id}/activity?days=${days}`),
+  failures: (days = 7) => request('GET', `/admin/failures?days=${days}`),
   createUser: (user) => request('POST', '/admin/users', user),
   updateUser: (id, changes) => request('PATCH', `/admin/users/${id}`, changes),
-  deleteUser: (id) => request('DELETE', `/admin/users/${id}`)
+  deleteUser: (id) => request('DELETE', `/admin/users/${id}`),
+  health: () => request('GET', '/admin/health'),
+  saveHealthLinks: (links) => request('PUT', '/admin/health/links', links),
+  runHealthCheck: () => request('POST', '/admin/health/run'),
+  exportUsage: (days = 30) => downloadFile(`/admin/export/usage.csv?days=${days}`, `chatpdf-usage-last-${days}-days.csv`),
+  exportAccounts: (days = 30) => downloadFile(`/admin/export/users.csv?days=${days}`, 'chatpdf-accounts.csv')
 };

@@ -59,7 +59,7 @@ function UserMenu({ user, route, onLogout }) {
   );
 }
 
-export function Navbar({ serverStatus, onRecheck, user, route, onLogout }) {
+export function Navbar({ serverStatus, onRecheck, user, authStatus, route, onLogout, onLogin, onSignup }) {
   const label = serverStatus === 'connected' ? 'Online' : serverStatus === 'checking' ? 'Connecting' : 'Offline';
 
   return (
@@ -89,6 +89,12 @@ export function Navbar({ serverStatus, onRecheck, user, route, onLogout }) {
             <span className="status-text">Server {label.toLowerCase()}</span>
           </button>
           {user && <UserMenu user={user} route={route} onLogout={onLogout} />}
+          {!user && authStatus !== 'loading' && (
+            <div className="nav-auth">
+              <button type="button" className="button button-ghost button-sm" onClick={onLogin}>Log in</button>
+              <button type="button" className="button button-primary button-sm" onClick={onSignup}>Sign up</button>
+            </div>
+          )}
         </div>
       </div>
     </header>

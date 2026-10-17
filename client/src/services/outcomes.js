@@ -45,6 +45,7 @@ const ERROR_OUTCOMES = {
   NETWORK: { tone: 'temporary', title: 'Cannot reach the server', hint: 'Check your connection and that the backend is running.' },
   BUSY: { tone: 'temporary', title: 'Server busy', hint: 'Other conversions are running. Retry in a minute.' },
   RATE_LIMITED: { tone: 'temporary', title: 'Too many conversions', hint: 'Please wait a little before converting again.' },
+  QUOTA_EXCEEDED: { tone: 'warning', title: 'Daily PDF limit reached', hint: 'Previews still work. Ask an administrator if you need a higher limit.' },
   RESPONSE_TOO_LARGE: { tone: 'error', title: 'Conversation too large', hint: 'This conversation exceeds the server\'s size limit.' },
   PDF_FAILED: { tone: 'temporary', title: 'PDF generation failed', hint: 'Retry. If it keeps failing, check the server logs.' },
   CANCELLED: { tone: 'neutral', title: 'Conversion cancelled', hint: '' },
@@ -54,10 +55,24 @@ const ERROR_OUTCOMES = {
   INTERNAL: { tone: 'temporary', title: 'Unexpected server error', hint: 'Retry. If it keeps failing, check the server logs.' }
 };
 
+/** "05:30" — a time in the viewer's own time zone (e.g. when the daily allowance resets). */
+export function localTime(ms) {
+  return new Date(ms).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+}
+
+/** The known category for an error code, or null (used by the admin failures view). */
+export function errorOutcome(code) {
+  return ERROR_OUTCOMES[code] || null;
+}
+
 /**
- * @param {{ code: string, message: string, retryable?: boolean }} error
+ * @param {{ code: string, message: string, retryable?: boolean, details?: object }} error
  */
 export function describeError(error) {
   const base = ERROR_OUTCOMES[error?.code] || ERROR_OUTCOMES.INTERNAL;
-  return { ...base, message: error?.message || '', retryable: error?.retryable ?? base.tone === 'temporary' };
+  const info = { ...base, message: error?.message || '', retryable: error?.retryable ?? base.tone === 'temporary' };
+  if (error?.code === 'QUOTA_EXCEEDED' && error.details?.resetsAt) {
+    info.hint = `New PDFs are possible again from ${localTime(error.details.resetsAt)} your time. ${base.hint}`;
+  }
+  return info;
 }

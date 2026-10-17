@@ -1,8 +1,15 @@
 import React, { useState } from 'react';
 import { authApi } from '../services/auth';
+import { localTime } from '../services/outcomes';
 import { Icon } from '../components/Icon';
 
-export function AccountPage({ user }) {
+function allowanceText(quota) {
+  if (quota.source === 'admin') return 'Administrators have no daily limit.';
+  if (quota.unlimited) return 'Your account has no daily limit.';
+  return `You can make ${quota.limit} PDF${quota.limit === 1 ? '' : 's'} a day. Today: ${quota.usedToday} made, ${quota.remaining} left.`;
+}
+
+export function AccountPage({ user, quota }) {
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -61,6 +68,16 @@ export function AccountPage({ user }) {
           </button>
         </form>
       </section>
+
+      {quota && (
+        <section className="card narrow-card">
+          <h2 className="card-title small"><Icon name="clock" size={17} /> Daily PDF allowance</h2>
+          <p className="card-subtitle">
+            {allowanceText(quota)}
+            {!quota.unlimited && ` It resets at ${localTime(quota.resetsAt)} your time (00:00 UTC). Previews do not count.`}
+          </p>
+        </section>
+      )}
 
       <section className="card narrow-card">
         <h2 className="card-title small"><Icon name="shield" size={17} /> Your data</h2>
